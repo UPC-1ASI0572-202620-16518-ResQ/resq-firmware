@@ -5,6 +5,7 @@
 - TODO
 - Pedro TODO
 - Gonzalo TODO
+- Fernando TODO
 
 ## Proyecto y ruta
 
@@ -50,4 +51,3 @@ el periodo analizado.
 E1 entorno · E2 Wi-Fi · E3 canal · E4 prototipo · E5 envíos 200 · E6 gráficos · E7 CSV · E9 repositorio
 
 Video E8: [G##_E8_video.mov](G##_E8_video.mov)
-
