@@ -55,9 +55,11 @@ public:
      */
     bool begin() {
         Wire.begin(sdaPin, sclPin);
-        isReady = screen.begin(SSD1306_SWITCHCAPVCC, i2cAddress);
+        isReady = screen.begin(SSD1306_SWITCHCAPVCC, i2cAddress, true, false); // Wire already uses our SDA/SCL
         if (isReady) {
             screen.clearDisplay();
+            screen.setTextWrap(false);
+            screen.cp437(true);
             screen.setTextColor(SSD1306_WHITE);
             screen.display();
         }

@@ -21,11 +21,11 @@ static const unsigned long SERIAL_START_DELAY_MS = 500;
 
 // Route 1 = everything simulated (works today, without the sensors).
 // Routes 2 and 3 = real sensors: mark below which ones are wired; the rest stay simulated.
-static const LabRoute LAB_ROUTE = LabRoute::ROUTE_1_SIMULATED;
+static const LabRoute LAB_ROUTE = LabRoute::ROUTE_3_REAL_WITH_ALARM;
 static const RealSensorSet REAL_SENSORS = {
-    .isGasReal = true,          // MQ-2 on GPIO 34
-    .isTemperatureReal = false,  // DHT22 on GPIO 4
-    .isMotionReal = true,       // PIR on GPIO 33
+    .isGasReal = true,
+    .isTemperatureReal = true,
+    .isMotionReal = false,
 };
 
 // OLED and LEDs: the pins the team already wired. Sensors and buzzer: the Cirkit design.

@@ -27,7 +27,7 @@
 #include "ThingSpeakPublisher.h"
 
 /** @brief Risk level of the room. */
-enum class RiskLevel { WARMING_UP, NORMAL, CAUTION, DANGER };
+enum class RiskLevel { WARMING_UP, NORMAL, CAUTION, DANGER, SENSOR_ERROR };
 
 /** @brief Work routes of the lab guide (section 4). */
 enum class LabRoute {
@@ -127,6 +127,7 @@ private:
     // State
     int gasRawLevel;
     float temperatureCelsius;
+    float humidityPercent;
     bool isMotionDetected;
     bool isReadingValid;
     RiskLevel riskLevel;
@@ -153,7 +154,7 @@ private:
     /** @brief Reads every sensor (real or simulated) and updates the risk level. */
     void takeReadings();
 
-    /** @return WARMING_UP, NORMAL, CAUTION or DANGER from the latest readings. */
+    /** @return WARMING_UP, NORMAL, CAUTION, DANGER or SENSOR_ERROR from the latest readings. */
     RiskLevel evaluateRiskLevel() const;
 
     /** @return true when Field 4 (alarm) must be 1. */

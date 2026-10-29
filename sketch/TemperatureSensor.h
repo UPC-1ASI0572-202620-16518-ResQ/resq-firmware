@@ -13,10 +13,11 @@
 
 #include <Arduino.h>
 #include <DHT.h>
+#include <math.h>
 
 /**
  * @class TemperatureSensor
- * @brief Reads the temperature in Celsius and remembers the last valid value.
+ * @brief Reads the temperature in Celsius and tracks the latest sample validity.
  */
 class TemperatureSensor {
 public:
@@ -25,31 +26,57 @@ public:
      * @param dataPin Pin wired to the DHT22 DATA leg.
      */
     explicit TemperatureSensor(int dataPin)
-        : dht(dataPin, DHT22), temperatureCelsius(NAN) {}
+        : dht(dataPin, DHT22),
+          temperatureCelsius(NAN),
+          humidityPercent(NAN), lastAttemptMs(0), hasAttempted(false) {}
 
     /** @brief Starts the sensor. Call it once from setup(). */
-    void begin() { dht.begin(); }
+    void begin() {
+        dht.begin();
+        temperatureCelsius = humidityPercent = NAN;
+        lastAttemptMs = millis();
+        hasAttempted = false;
+    }
 
     /**
      * @brief Takes a new reading.
      * @return false when the sensor did not answer (loose wire, wrong pin).
      */
     bool read() {
-        float newTemperature = dht.readTemperature();
-        if (isnan(newTemperature)) return false;
+        // Commands/BOOT may request updates faster than the physical sample rate.
+        if (millis() - lastAttemptMs < MIN_READ_INTERVAL_MS) {
+            return hasAttempted && isfinite(temperatureCelsius) && isfinite(humidityPercent);
+        }
+        lastAttemptMs = millis();
+        hasAttempted = true;
+        float newTemperature = dht.readTemperature(false);
+        float newHumidity = dht.readHumidity();
+
+        if (!isfinite(newTemperature) || !isfinite(newHumidity) || newHumidity < 0.0f || newHumidity > 100.0f) {
+            temperatureCelsius = humidityPercent = NAN;
+            return false;
+        }
+
         temperatureCelsius = newTemperature;
+        humidityPercent = newHumidity;
         return true;
     }
 
     /**
-     * @brief Last valid temperature.
-     * @return Degrees Celsius, or NAN if there was never a valid reading.
+     * @brief Temperature from the latest sampling attempt (cached for at most 2 s).
+     * @return Degrees Celsius, or NAN after a failed reading or before the first sample.
      */
     float getTemperatureCelsius() const { return temperatureCelsius; }
 
+    float getHumidityPercent() const { return humidityPercent; }
+
 private:
+    static constexpr unsigned long MIN_READ_INTERVAL_MS = 2000;
     DHT dht;
     float temperatureCelsius;
+    float humidityPercent;
+    unsigned long lastAttemptMs;
+    bool hasAttempted;
 };
 
 #endif // TEMPERATURE_SENSOR_H

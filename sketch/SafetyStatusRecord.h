@@ -8,6 +8,7 @@
  */
 
 #include <Arduino.h>
+#include <math.h>
 
 /**
  * @class SafetyStatusRecord
@@ -22,15 +23,21 @@ public:
      * @param rssiDbm Wi-Fi signal strength (Field 3).
      * @param isAlarmOn true when the risk is DANGER (Field 4).
      * @param isMotionDetected true when the PIR sees someone (Field 5).
+     * @param humidityPercent Relative humidity (Field 6).
      * @param statusMessage Text for the ThingSpeak status, or nullptr to send none.
      */
     SafetyStatusRecord(int gasRawLevel, float temperatureCelsius, int rssiDbm, bool isAlarmOn,
-                       bool isMotionDetected, const char* statusMessage)
+                       bool isMotionDetected, float humidityPercent, const char* statusMessage)
         : gasRawLevel(gasRawLevel), temperatureCelsius(temperatureCelsius), rssiDbm(rssiDbm),
-          isAlarmOn(isAlarmOn), isMotionDetected(isMotionDetected), statusMessage(statusMessage) {}
+          isAlarmOn(isAlarmOn), isMotionDetected(isMotionDetected), humidityPercent(humidityPercent), statusMessage(statusMessage) {}
 
     int getGasRawLevel() const { return gasRawLevel; }
     float getTemperatureCelsius() const { return temperatureCelsius; }
+    float getHumidityPercent() const { return humidityPercent; }
+    bool hasValidMeasurements() const {
+        return isfinite(temperatureCelsius) && isfinite(humidityPercent)
+               && humidityPercent >= 0.0f && humidityPercent <= 100.0f;
+    }
     int getRssiDbm() const { return rssiDbm; }
     int getAlarmFlag() const { return isAlarmOn ? 1 : 0; }
     int getMotionFlag() const { return isMotionDetected ? 1 : 0; }
@@ -43,6 +50,7 @@ private:
     int rssiDbm;
     bool isAlarmOn;
     bool isMotionDetected;
+    float humidityPercent;
     const char* statusMessage;
 };
 

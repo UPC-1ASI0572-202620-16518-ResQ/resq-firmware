@@ -7,7 +7,7 @@
  *
  * Channel fields:
  *   Field 1 Gas MQ-2 (raw) | Field 2 Temperatura (C) | Field 3 RSSI (dBm)
- *   Field 4 Alarma (0/1)   | Field 5 Movimiento (0/1)
+ *   Field 4 Alarma (0/1)   | Field 5 Movimiento (0/1) | Field 6 Humedad (%)
  *
  * @author ResQ IoT development team
  */
@@ -28,6 +28,8 @@ public:
     static constexpr unsigned int FIELD_RSSI = 3;
     static constexpr unsigned int FIELD_ALARM = 4;
     static constexpr unsigned int FIELD_MOTION = 5;
+    static constexpr unsigned int FIELD_HUMIDITY = 6;
+    static constexpr int RESULT_INVALID_SAMPLE = -1000; // local rejection; no request sent
     // Result codes explained in part E of the lab guide
     static constexpr int RESULT_OK = 200;
     static constexpr int RESULT_BAD_API_KEY = 404;
@@ -51,11 +53,13 @@ public:
      * @return ThingSpeak result code (200 = OK).
      */
     int publish(const SafetyStatusRecord& record) {
+        if (!record.hasValidMeasurements()) return RESULT_INVALID_SAMPLE;
         ThingSpeak.setField(FIELD_GAS, record.getGasRawLevel());
         ThingSpeak.setField(FIELD_TEMPERATURE, record.getTemperatureCelsius());
         ThingSpeak.setField(FIELD_RSSI, record.getRssiDbm());
         ThingSpeak.setField(FIELD_ALARM, record.getAlarmFlag());
         ThingSpeak.setField(FIELD_MOTION, record.getMotionFlag());
+        ThingSpeak.setField(FIELD_HUMIDITY, record.getHumidityPercent());
         if (record.hasStatusMessage()) {
             ThingSpeak.setStatus(record.getStatusMessage());
         }
@@ -69,6 +73,7 @@ public:
      */
     static const char* describeResult(int resultCode) {
         switch (resultCode) {
+            case RESULT_INVALID_SAMPLE: return "muestra invalida: envio omitido";
             case RESULT_OK: return "envio correcto";
             case RESULT_BAD_API_KEY: return "Write API Key incorrecta: revisa secrets.h";
             case RESULT_TOO_SOON: return "enviado antes de 15 s";

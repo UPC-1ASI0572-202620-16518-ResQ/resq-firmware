@@ -70,6 +70,9 @@ public:
         return temperatureBaseCelsius + noiseTenths / TENTHS_PER_DEGREE;
     }
 
+    /** @return Simulated relative humidity; used only when the DHT is simulated. */
+    float readHumidityPercent() const { return 50.0f; }
+
     /** @return Simulated PIR state. */
     bool readMotion() const { return isMotionDetected; }
 
