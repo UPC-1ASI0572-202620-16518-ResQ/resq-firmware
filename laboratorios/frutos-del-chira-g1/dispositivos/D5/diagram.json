@@ -1,0 +1,467 @@
+{
+  "version": 1,
+  "author": "Fabricio Fabian Quispe Barzola - D5 (propuesta no ejecutada)",
+  "editor": "wokwi",
+  "parts": [
+    {
+      "type": "board-esp32-devkit-c-v4",
+      "id": "esp",
+      "top": 0,
+      "left": 0,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-microsd-card",
+      "id": "sd",
+      "top": -230,
+      "left": 310,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-ds1307",
+      "id": "rtc",
+      "top": -210,
+      "left": 540,
+      "attrs": {
+        "initTime": "now"
+      }
+    },
+    {
+      "type": "wokwi-hc-sr04",
+      "id": "us1",
+      "top": -160,
+      "left": -390,
+      "attrs": {
+        "distance": "195"
+      }
+    },
+    {
+      "type": "wokwi-hc-sr04",
+      "id": "us2",
+      "top": -25,
+      "left": -390,
+      "attrs": {
+        "distance": "210"
+      }
+    },
+    {
+      "type": "wokwi-hc-sr04",
+      "id": "us3",
+      "top": 110,
+      "left": -390,
+      "attrs": {
+        "distance": "225"
+      }
+    },
+    {
+      "type": "wokwi-hc-sr04",
+      "id": "us4",
+      "top": 245,
+      "left": -390,
+      "attrs": {
+        "distance": "240"
+      }
+    },
+    {
+      "type": "wokwi-potentiometer",
+      "id": "rain1",
+      "top": -120,
+      "left": 340,
+      "attrs": {
+        "value": "900"
+      }
+    },
+    {
+      "type": "wokwi-potentiometer",
+      "id": "rain2",
+      "top": 10,
+      "left": 340,
+      "attrs": {
+        "value": "900"
+      }
+    },
+    {
+      "type": "wokwi-slide-switch",
+      "id": "float1",
+      "top": 200,
+      "left": 360,
+      "attrs": {
+        "value": "1",
+        "bounce": "0"
+      }
+    },
+    {
+      "type": "wokwi-slide-switch",
+      "id": "float2",
+      "top": 285,
+      "left": 360,
+      "attrs": {
+        "value": "1",
+        "bounce": "0"
+      }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "ra1",
+      "top": -180,
+      "left": -125,
+      "attrs": {
+        "value": "10000"
+      }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "rb1",
+      "top": -145,
+      "left": -80,
+      "attrs": {
+        "value": "18000"
+      }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "ra2",
+      "top": -45,
+      "left": -125,
+      "attrs": {
+        "value": "10000"
+      }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "rb2",
+      "top": -10,
+      "left": -80,
+      "attrs": {
+        "value": "18000"
+      }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "ra3",
+      "top": 90,
+      "left": -125,
+      "attrs": {
+        "value": "10000"
+      }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "rb3",
+      "top": 125,
+      "left": -80,
+      "attrs": {
+        "value": "18000"
+      }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "ra4",
+      "top": 225,
+      "left": -125,
+      "attrs": {
+        "value": "10000"
+      }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "rb4",
+      "top": 260,
+      "left": -80,
+      "attrs": {
+        "value": "18000"
+      }
+    }
+  ],
+  "connections": [
+    [
+      "us1:VCC",
+      "esp:5V",
+      "red",
+      []
+    ],
+    [
+      "us1:GND",
+      "esp:GND.1",
+      "black",
+      []
+    ],
+    [
+      "us1:TRIG",
+      "esp:13",
+      "blue",
+      []
+    ],
+    [
+      "us2:VCC",
+      "esp:5V",
+      "red",
+      []
+    ],
+    [
+      "us2:GND",
+      "esp:GND.1",
+      "black",
+      []
+    ],
+    [
+      "us2:TRIG",
+      "esp:14",
+      "blue",
+      []
+    ],
+    [
+      "us3:VCC",
+      "esp:5V",
+      "red",
+      []
+    ],
+    [
+      "us3:GND",
+      "esp:GND.1",
+      "black",
+      []
+    ],
+    [
+      "us3:TRIG",
+      "esp:25",
+      "blue",
+      []
+    ],
+    [
+      "us4:VCC",
+      "esp:5V",
+      "red",
+      []
+    ],
+    [
+      "us4:GND",
+      "esp:GND.1",
+      "black",
+      []
+    ],
+    [
+      "us4:TRIG",
+      "esp:26",
+      "blue",
+      []
+    ],
+    [
+      "rain1:VCC",
+      "esp:3V3",
+      "red",
+      []
+    ],
+    [
+      "rain1:GND",
+      "esp:GND.1",
+      "black",
+      []
+    ],
+    [
+      "rain1:SIG",
+      "esp:36",
+      "purple",
+      []
+    ],
+    [
+      "rain2:VCC",
+      "esp:3V3",
+      "red",
+      []
+    ],
+    [
+      "rain2:GND",
+      "esp:GND.1",
+      "black",
+      []
+    ],
+    [
+      "rain2:SIG",
+      "esp:39",
+      "purple",
+      []
+    ],
+    [
+      "float1:2",
+      "esp:16",
+      "green",
+      []
+    ],
+    [
+      "float1:1",
+      "esp:GND.1",
+      "black",
+      []
+    ],
+    [
+      "float2:2",
+      "esp:17",
+      "green",
+      []
+    ],
+    [
+      "float2:1",
+      "esp:GND.1",
+      "black",
+      []
+    ],
+    [
+      "sd:VCC",
+      "esp:5V",
+      "red",
+      []
+    ],
+    [
+      "sd:GND",
+      "esp:GND.1",
+      "black",
+      []
+    ],
+    [
+      "sd:CS",
+      "esp:5",
+      "yellow",
+      []
+    ],
+    [
+      "sd:SCK",
+      "esp:18",
+      "green",
+      []
+    ],
+    [
+      "sd:DO",
+      "esp:19",
+      "blue",
+      []
+    ],
+    [
+      "sd:DI",
+      "esp:23",
+      "orange",
+      []
+    ],
+    [
+      "rtc:5V",
+      "esp:5V",
+      "red",
+      []
+    ],
+    [
+      "rtc:GND",
+      "esp:GND.1",
+      "black",
+      []
+    ],
+    [
+      "rtc:SDA",
+      "esp:21",
+      "blue",
+      []
+    ],
+    [
+      "rtc:SCL",
+      "esp:22",
+      "yellow",
+      []
+    ],
+    [
+      "us1:ECHO",
+      "ra1:1",
+      "orange",
+      []
+    ],
+    [
+      "ra1:2",
+      "esp:32",
+      "orange",
+      []
+    ],
+    [
+      "ra1:2",
+      "rb1:1",
+      "green",
+      []
+    ],
+    [
+      "rb1:2",
+      "esp:GND.1",
+      "black",
+      []
+    ],
+    [
+      "us2:ECHO",
+      "ra2:1",
+      "orange",
+      []
+    ],
+    [
+      "ra2:2",
+      "esp:33",
+      "orange",
+      []
+    ],
+    [
+      "ra2:2",
+      "rb2:1",
+      "green",
+      []
+    ],
+    [
+      "rb2:2",
+      "esp:GND.1",
+      "black",
+      []
+    ],
+    [
+      "us3:ECHO",
+      "ra3:1",
+      "orange",
+      []
+    ],
+    [
+      "ra3:2",
+      "esp:34",
+      "orange",
+      []
+    ],
+    [
+      "ra3:2",
+      "rb3:1",
+      "green",
+      []
+    ],
+    [
+      "rb3:2",
+      "esp:GND.1",
+      "black",
+      []
+    ],
+    [
+      "us4:ECHO",
+      "ra4:1",
+      "orange",
+      []
+    ],
+    [
+      "ra4:2",
+      "esp:35",
+      "orange",
+      []
+    ],
+    [
+      "ra4:2",
+      "rb4:1",
+      "green",
+      []
+    ],
+    [
+      "rb4:2",
+      "esp:GND.1",
+      "black",
+      []
+    ]
+  ],
+  "dependencies": {}
+}

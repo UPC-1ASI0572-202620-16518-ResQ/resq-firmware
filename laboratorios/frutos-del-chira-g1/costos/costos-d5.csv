@@ -1,0 +1,14 @@
+tipo,componente,modelo,cantidad,tension,interfaz,precio_unitario_soles,subtotal_soles,fuente,estado_precio
+Propuesto,Microcontrolador,ESP32 DevKit V1,1,5V-USB-3.3V-IO,GPIO,36.00,36.00,https://store.intecx.com.pe/product/modulo-esp32-devkit-usb-tipo-c/,referencia_publicada
+Obligatorio,Ultrasonido,JSN-SR04T,4,5V,TRIG-ECHO,40.00,160.00,https://mtlab.pe/producto/jsn-sr04t-sensor-ultrasonico-5-v-impermeable-25-450-cm/,referencia_publicada
+Obligatorio,Lluvia,FC-37,2,3.3V-si-compatible,ADC1,10.00,20.00,https://naylampmechatronics.com/sensores/216-sensor-de-lluvia-y-nieve-fc-37.html,referencia_publicada-posible-agotado
+Obligatorio,Nivel,Flotador vertical,2,contacto-seco,MCP23017,12.00,24.00,https://naylampmechatronics.com/sensores-liquido/120-sensor-de-nivel-de-liquido-vertical.html,referencia_publicada
+Obligatorio,Reloj,RTC DS3231,1,3.3V-I2C,I2C,24.00,24.00,https://www.electromania.pe/producto/modulo-rtc-ds3231/,referencia_publicada
+Obligatorio,Lector SD,MicroSD SPI,1,3.3V-5V-segun-modelo,SPI,14.00,14.00,https://eduboticsperu.com/tienda/modulo-micro-sd/,referencia_publicada
+Propuesto,Router 4G,LTE RUT200,1,9-30V-segun-ficha,Ethernet-LTE-Wifi,490.00,490.00,https://mediatechperu.com/producto/enrutador-iot-inalambrico-teltonika-rut200-industrial-lte-wifi-4g-negro,referencia_publicada
+Obligatorio,Memoria,Tarjeta microSD,1,segun-modelo,SPI,,,pendiente,cotizar
+Propuesto,Extensor digital,MCP23017,1,3.3V,I2C,,,pendiente,cotizar
+Propuesto,Transceptor,RS485 aislado 3.3V,1,3.3V,UART-485,,,pendiente,cotizar
+Propuesto,Resistencias,Divisor 10k/18k,4,5V-a-3.3V,ECHO,,,pendiente,cotizar
+Propuesto,Respaldo,UPS y fuente,1,DC,alimentacion,,,pendiente,dimensionar-cotizar
+Propuesto,Proteccion,Caja IP65/SPD/cableado,1,varia,instalacion,,,pendiente,cotizar
