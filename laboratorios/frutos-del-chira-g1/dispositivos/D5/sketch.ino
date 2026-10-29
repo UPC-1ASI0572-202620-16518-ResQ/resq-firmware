@@ -13,6 +13,8 @@
 #include <SPI.h>
 #include <SD.h>
 #include <RTClib.h>
+#include <esp_task_wdt.h>
+#include <esp_idf_version.h>
 
 namespace Pins {
   constexpr uint8_t TRIG[4] = {13, 14, 25, 26};
@@ -34,8 +36,15 @@ uint32_t lastSonic = 0, lastSnapshot = 0, lastHeartbeat = 0, lastSend = 0, lastP
 uint8_t sonicIndex = 0;
 float distanceCm[4] = {NAN,NAN,NAN,NAN};
 uint8_t faultStreak[4] = {0,0,0,0};
-const uint16_t RAIN_THRESHOLD = 1700; // demostracion; calibrar sensor fisico
-const float WATER_CRITICAL_CM = 40.0f; // distancia al agua segun altura de montaje
+bool waterCritical[4] = {false,false,false,false};
+bool raining = false;
+uint8_t wetStreak = 0, dryStreak = 0;
+bool watchdogActive = false;
+const uint16_t RAIN_ON_THRESHOLD = 1500; // umbral de demostracion, no calibrado
+const uint16_t RAIN_OFF_THRESHOLD = 2000; // histeresis
+const uint8_t RAIN_DEBOUNCE = 4; // cuatro comprobaciones consecutivas
+const float WATER_CRITICAL_CM = 40.0f; // activar CRITICO
+const float WATER_CLEAR_CM = 50.0f; // desactivar al alejarse, histeresis
 const uint32_t SONIC_INTERVAL_MS = 400; // mide una sonda a la vez, limita interferencia
 const uint32_t SNAPSHOT_INTERVAL_MS = 15000;
 const uint32_t HEARTBEAT_MS = 10000;
@@ -67,7 +76,8 @@ bool appendLine(const char* path, const String& line) {
   if (!sdOk) return false;
   File f = SD.open(path, FILE_APPEND);
   if (!f) return false;
-  bool ok = f.println(line) == line.length()+2; // CRLF de Arduino Print::println
+  size_t written=f.println(line);
+  bool ok = written>=line.length()+1; // acepta LF/CRLF, confirma escritura completa
   f.flush();
   f.close();
   // No asumimos atomicidad de escritura ante perdida abrupta de energia.
@@ -197,7 +207,12 @@ void sampleUltrasonic() {
   if(!isfinite(cm) || cm<25 || cm>450) {
     if(faultStreak[i]<255) faultStreak[i]++;
     distanceCm[i]=NAN;
-  } else {distanceCm[i]=cm; faultStreak[i]=0;}
+  } else {
+    distanceCm[i]=cm;
+    faultStreak[i]=0;
+    if(cm < WATER_CRITICAL_CM) waterCritical[i]=true;
+    else if(cm >= WATER_CLEAR_CM) waterCritical[i]=false;
+  }
   sonicIndex=(sonicIndex+1)%4;
 }
 
@@ -211,21 +226,34 @@ const char* stateName(RiskState s) {
 }
 
 void evaluate() {
+  // Dos entradas analogicas de lluvia, con histeresis y persistencia temporal.
+  uint16_t r0=analogRead(Pins::RAIN[0]);
+  uint16_t r1=analogRead(Pins::RAIN[1]);
+  bool wetNow = r0 < RAIN_ON_THRESHOLD || r1 < RAIN_ON_THRESHOLD;
+  bool dryNow = r0 > RAIN_OFF_THRESHOLD && r1 > RAIN_OFF_THRESHOLD;
+  if(!raining) {
+    wetStreak = wetNow ? min((int)wetStreak+1, (int)RAIN_DEBOUNCE) : 0;
+    if(wetStreak>=RAIN_DEBOUNCE) { raining=true; dryStreak=0; Serial.println("[LLUVIA] Confirmada"); }
+  } else {
+    dryStreak = dryNow ? min((int)dryStreak+1, (int)RAIN_DEBOUNCE) : 0;
+    if(dryStreak>=RAIN_DEBOUNCE) { raining=false; wetStreak=0; Serial.println("[LLUVIA] Fin confirmado"); }
+  }
+
   bool critical = digitalRead(Pins::FLOATS[0])==LOW || digitalRead(Pins::FLOATS[1])==LOW;
-  bool raining = analogRead(Pins::RAIN[0])<RAIN_THRESHOLD || analogRead(Pins::RAIN[1])<RAIN_THRESHOLD;
   bool failure=false;
   for(int i=0;i<4;i++) {
-    if(isfinite(distanceCm[i]) && distanceCm[i] < WATER_CRITICAL_CM) critical=true;
+    if(waterCritical[i]) critical=true;
     if(faultStreak[i]>=3) failure=true;
   }
-  // Riesgo fisico primero; falla de sensor se informa tambien como evento independiente.
-  RiskState next=critical?RiskState::CRITICO:(failure?RiskState::FALLA_SENSOR:(raining?RiskState::ALERTA:RiskState::NORMAL));
+  RiskState next=critical?RiskState::CRITICO:
+                 (failure?RiskState::FALLA_SENSOR:(raining?RiskState::ALERTA:RiskState::NORMAL));
   if(next!=current) {
     RiskState old=current; current=next;
     Serial.printf("[ESTADO] %s -> %s\n",stateName(old),stateName(current));
     event("D5","CAMBIO_ESTADO",current==RiskState::CRITICO?0:1,stateName(current));
+    if(next==RiskState::CRITICO) Serial.println("[ALARMA LOCAL] ALERTA CRITICA: VERIFICAR NIVEL DE AGUA");
+    if(next==RiskState::FALLA_SENSOR) Serial.println("[ALARMA LOCAL] FALLA DE SONDA ULTRASONICA");
   }
-  if(critical) Serial.println("[ALARMA LOCAL] ALERTA CRITICA: VERIFICAR NIVEL DE AGUA");
 }
 
 void snapshot() {
@@ -253,6 +281,27 @@ void handleCommand(String s) {
   else if(s.length()) Serial.println("[CMD] Desconocido; enviar HELP");
 }
 
+void configureWatchdog() {
+#if ESP_IDF_VERSION_MAJOR >= 5
+  esp_task_wdt_config_t cfg = {};
+  cfg.timeout_ms=15000;
+  cfg.idle_core_mask=0;
+  cfg.trigger_panic=true;
+  esp_err_t rc=esp_task_wdt_init(&cfg);
+  if(rc!=ESP_OK && rc!=ESP_ERR_INVALID_STATE) {
+    Serial.printf("[WDT] Error de inicio: %d\n",(int)rc);return;
+  }
+#else
+  esp_err_t rc=esp_task_wdt_init(15,true);
+  if(rc!=ESP_OK && rc!=ESP_ERR_INVALID_STATE) {
+    Serial.printf("[WDT] Error de inicio: %d\n",(int)rc);return;
+  }
+#endif
+  esp_err_t subscribed=esp_task_wdt_add(NULL);
+  watchdogActive = subscribed == ESP_OK || subscribed == ESP_ERR_INVALID_ARG;
+  Serial.printf("[WDT] %s (15 s)\n",watchdogActive?"ACTIVO":"VERIFICAR");
+}
+
 void setup() {
   Serial.begin(115200); Serial.setTimeout(70);
   for(uint8_t i=0;i<4;i++){pinMode(Pins::TRIG[i],OUTPUT);pinMode(Pins::ECHO[i],INPUT); digitalWrite(Pins::TRIG[i],LOW);}
@@ -268,10 +317,12 @@ void setup() {
   Serial.printf("microSD=%s RTC=%s (DEMO, WAN/ACK simulados)\n",sdOk?"OK":"ERROR",rtcOk?"OK":"ERROR");
   restoreSequence();
   Serial.println("Enviar HELP en el monitor serie; Newline, 115200 baudios");
+  configureWatchdog();
   event("D5","ARRANQUE",1,"GATEWAY_BOOT");
 }
 
 void loop() {
+  if(watchdogActive) esp_task_wdt_reset();
   if(Serial.available()) handleCommand(Serial.readStringUntil('\n'));
   uint32_t now=millis();
   if(now-lastSonic>=SONIC_INTERVAL_MS){lastSonic=now; sampleUltrasonic();evaluate();}
@@ -279,5 +330,6 @@ void loop() {
   if(now-lastHeartbeat>=HEARTBEAT_MS){lastHeartbeat=now;event("D5","HEARTBEAT",2,stateName(current));}
   if(now-lastSend>=SEND_INTERVAL_MS){lastSend=now;sendOne();}
   if(now-lastPrint>=12000){lastPrint=now;Serial.printf("[RESUMEN] WAN=%d enCola=%lu estado=%s\n",wanUp,(unsigned long)pendingCount(),stateName(current));}
+  if(watchdogActive) esp_task_wdt_reset();
   delay(5);
 }

@@ -15,7 +15,9 @@
 - `../../tablas/ia-z10.md` — alternativas IA / estadística / reglas.
 - `../../incidentes/protocolo-v1.md` — protocolo preliminar editable de los 8 capítulos.
 - `../../incidentes/protocolo-v2-plantilla.md` — no completar hasta conocer Evento 2.
-- `pruebas/Pruebas_Wokwi.md` — pasos reproducibles, sin resultados inventados.
+- `pruebas/Pruebas_Wokwi.md` — bitácora con resultados de capturas reales y pruebas pendientes.
+- `pruebas/evidencias/` — cuatro capturas originales recibidas (sin edición).
+- `pruebas/PENDIENTES_EJECUTAR.md` — instrucciones para completar evidencia individual.
 
 ## Cómo llevar a Wokwi
 1. Abrir https://wokwi.com/projects/new/esp32

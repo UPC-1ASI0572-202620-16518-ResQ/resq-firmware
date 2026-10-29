@@ -1,46 +1,33 @@
-# Plan de prueba D5 / Wokwi — ejecutar, capturar y llenar resultados
-Este proyecto **NO ha sido ejecutado en Wokwi por el asistente**. El código y diagrama son archivos para cargar y verificar. El código emula WAN, ACK y los nodos D1–D4 por serial.
+# Pruebas D5 en Wokwi — Bitácora honesta
 
-## Escenario E0 — Inicio
-1. Cargar `sketch.ino`, `diagram.json` y `libraries.txt` (`RTClib`).
-2. Iniciar simulación y abrir Monitor Serie a 115200 con Newline.
-3. Resultado esperado: `microSD=OK RTC=OK`, `[STORE] ARRANQUE`, `[TX-SIM]`, `[ACK-SIM]`.
-4. Comprobar si se muestran mensajes distintos; capturar pantalla.
+**Responsable:** Fabricio Fabian Quispe Barzola (D5).  
+**Modalidad:** simulación, sin radio 4G ni RS485 físicos; nodos D1–D4 y confirmaciones de servidor emulados.
 
-## Escenario E1 — Caída de WAN
-1. Enviar `STATUS`; guardar número de pendientes.
-2. Enviar `WAN=0`; se deshabilita solo la WAN **emulada**.
-3. Enviar `NODE=D1`, `NODE=D2`, `EVENT=CRIT` y esperar 30 s.
-4. Resultado esperado: `[STORE]` aun con WAN=DOWN, sin `[ACK-SIM]` de esas nuevas alarmas; pendientes aumentan.
-5. Capturar salida y, si está disponible, contenido de `events.log` de tarjeta microSD virtual.
+## Evidencia observada en capturas del 29-10-2026 (versión inicial)
 
-## Escenario E2 — Recuperación
-1. Enviar `WAN=1`.
-2. Esperar varios intervalos de 2.5 s: primero P0 (inundación), luego P1 (nodos), después P2 (resúmenes).
-3. Enviar `STATUS` para verificar que disminuye `pendientes`.
-4. Revisar `acks.log`: IDs ya confirmados por el **simulador de servidor**, no una nube real.
-5. Capturar pantalla.
+| Caso | Registro observado | Resultado | Evidencia |
+|---|---|---|---|
+| Inicio | `microSD=OK RTC=OK`, `ARRANQUE`, `STORE` y `TX-SIM/ACK-SIM` | Verificado visualmente | `evidencias/01-arranque.png` |
+| Desconexión | Mensaje `WAN ... CAIDOS`; `STATUS ... WAN=DOWN ... pendientes=26` | Verificado visualmente | `evidencias/02-wan-caida.png`, `03-cola-pendiente.png` |
+| Retención en desconexión | `WAN=0 enCola=37`, nuevos eventos `STORE` con `WAN=DOWN` | Verificado visualmente | `evidencias/04-acumulacion.png` |
+| Reconexión | Mensaje `[WAN] Enlace emulado RESTAURADO` | Verificado visualmente | `evidencias/04-acumulacion.png` |
+| Retransmisión posterior a recuperación | **No visible** `[ACK-SIM]` posterior a restauración, ni cola vacía | Pendiente | Nueva captura requerida |
+| Activación física virtual de inundación | No se ve sensor a 30 cm ni flotador activo en los registros suministrados | Pendiente | Nueva captura requerida |
+| Watchdog e histéresis actualizados | Código corregido y aún **no ejecutado** en Wokwi | Pendiente | Nueva captura requerida |
+| Reinicio y persistencia | No demostrado sobre microSD virtual | Pendiente | Nueva prueba requerida |
 
-## Escenario E3 — Riesgo perimetral
-1. Mover un potenciómetro de lluvia a bajo valor: resultado esperado `ALERTA` si el nivel es menor que `RAIN_THRESHOLD`.
-2. Pasar interruptor float1 o float2 a contacto GND: resultado esperado `CRITICO` y prioridad P0.
-3. Variar distancia de un HC-SR04 bajo el umbral de prueba (>25 cm y <40 cm): resultado esperado `CRITICO`.
-4. Restablecer valores y comprobar retorno a NORMAL; conservar capturas.
+**Alcance:** las imágenes provienen de la ejecución realizada por el estudiante y enviada al chat. No son capturas creadas o manipuladas por el asistente. Las observaciones se refieren a la versión anterior a la corrección de lluvia/watchdog.
 
-## Escenario E4 — Reinicio / persistencia
-1. Reiniciar simulador web y observar si se recrea microSD. **No usar esta acción como prueba de persistencia entre sesiones**: Wokwi web genera FAT16 y no garantiza que conserve escrituras entre sesiones.
-2. La persistencia después de pérdida de energía en hardware físico debe probarse con tarjeta real, energía estable y pruebas de corte; aún está pendiente.
+## Cómo finalizar la prueba con el código actualizado
 
-## Matriz de resultados (rellenar SOLO tras ejecutar)
-| Escenario | Resultado esperado | Resultado observado | Captura / enlace | Estado |
-|---|---|---|---|---|
-| E0 | microSD y RTC inicializados | PENDIENTE | PENDIENTE | NO EJECUTADO |
-| E1 | Crecimiento de pendientes al caer WAN | PENDIENTE | PENDIENTE | NO EJECUTADO |
-| E2 | Reenvío prioritario + ACK simulado | PENDIENTE | PENDIENTE | NO EJECUTADO |
-| E3 | Alerta de lluvia, CRÍTICO por inundación | PENDIENTE | PENDIENTE | NO EJECUTADO |
-| E4 | Delimitar comportamiento virtual, no afirmar persistencia de reinicio | PENDIENTE | PENDIENTE | NO EJECUTADO |
+1. Copiar el nuevo `sketch.ino` al proyecto Wokwi; iniciar Play. Confirmar `microSD=OK`, `RTC=OK` y `[WDT] ACTIVO`.
+2. Elegir Newline en el Monitor Serie; enviar **individualmente** `WAN=0`, `NODE=D1`, `NODE=D2`, `EVENT=CRIT`, `STATUS`.
+3. Confirmar `WAN=DOWN` con mensajes pendientes y sin ACK simulados nuevos durante la desconexión. Capturar.
+4. Enviar `WAN=1`, esperar a los mensajes `[TX-SIM]` y `[ACK-SIM]` y comprobar `STATUS` con pendientes decrecientes. Capturar. **No declarar cola vacía hasta verla**.
+5. Ajustar un HC-SR04 virtual a 30 cm (>=25 cm para evitar lectura inválida); debe observarse `CRITICO`. Volver a >=50 cm para despejar la alarma; capturar.
+6. Activar un flotador virtual (contacto a GND) y observar `CRITICO`; desactivarlo; capturar.
+7. Mover un potenciómetro por debajo de 1500, esperar cuatro evaluaciones; debe aparecer `[LLUVIA] Confirmada` y `ALERTA`. Para despejar, ambos deben superar 2000 durante cuatro evaluaciones. Capturar.
+8. Provocar lectura ultrasónica inválida de una sonda tres veces consecutivas y observar `FALLA_SENSOR` cuando no haya `CRITICO`.
+9. Guardar el proyecto con Save y copiar URL `/projects/<id>` a `../../../../entregables/enlaces-wokwi.md`.
 
-## Referencias
-- microSD Wokwi: https://docs.wokwi.com/parts/wokwi-microsd-card
-- Ultrasonido sustituto: https://docs.wokwi.com/parts/wokwi-hc-sr04
-- RTC sustituto: https://docs.wokwi.com/parts/wokwi-ds1307
+**Limitaciones:** SD virtual no demuestra persistencia física ante apagón; no hay router LTE ni intercambio real con D1–D4. El watchdog debe comprobarse ejecutando el firmware. Los umbrales son **solo didácticos**. Si SD falla, la alarma local debe seguir informando el problema pero no se garantiza conservación de datos.
