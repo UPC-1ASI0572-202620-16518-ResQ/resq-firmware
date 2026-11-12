@@ -129,6 +129,19 @@ void ResQMonitorDevice::handleConsoleCommand(const ConsoleCommand& c) {
             isAlarmSilenced=true; break;
         case ConsoleCommandType::UNSILENCE:
             isAlarmSilenced=false; break;
+        case ConsoleCommandType::DEMO_GAS:
+            demo.startScenario(DemoScenario::GAS,millis());
+            lastPublishMs=millis()-ResQConfig::PUBLISH_INTERVAL_MS; break;
+        case ConsoleCommandType::DEMO_TEMP:
+            demo.startScenario(DemoScenario::TEMPERATURE,millis());
+            lastPublishMs=millis()-ResQConfig::PUBLISH_INTERVAL_MS; break;
+        case ConsoleCommandType::DEMO_HUM:
+            demo.startScenario(DemoScenario::HUMIDITY,millis());
+            lastPublishMs=millis()-ResQConfig::PUBLISH_INTERVAL_MS; break;
+        case ConsoleCommandType::DEMO_MOTION:
+            demo.startScenario(DemoScenario::MOTION,millis());
+            lastPublishMs=millis()-ResQConfig::PUBLISH_INTERVAL_MS; break;
+        case ConsoleCommandType::DEMO_OFF: demo.stop(); break;
         case ConsoleCommandType::HELP:
             printHelp(); break;
         default: break;
@@ -164,6 +177,10 @@ void ResQMonitorDevice::takeReadings() {
     humidityPercent=realHumidity;
     isMotionDetected=realMotion;
     if(demo.active()) {
+        // Si falla el DHT durante la demostracion, usar valores sinteticos
+        // validos para permitir una prueba integral de telemetria.
+        if(!isfinite(temperatureCelsius)) temperatureCelsius=25.0f;
+        if(!isfinite(humidityPercent)) humidityPercent=50.0f;
         switch(demo.selected()) {
             case DemoScenario::GAS: gasRawLevel=ResQConfig::DEMO_GAS_ADC; break;
             case DemoScenario::TEMPERATURE: temperatureCelsius=ResQConfig::DEMO_TEMP_C; break;
@@ -196,6 +213,7 @@ void ResQMonitorDevice::evaluateState() {
                  hysteresisHigh(humidityPercent,ResQConfig::HUM_PRECAUCION_PCT,
                      ResQConfig::HUM_HISTERESIS_PCT,humidityLatch);
     gasDanger=gasLatch || realDanger;
+    if(!gasDanger && !isMotionDetected) isAlarmSilenced=false;
     ambientDanger=gasDanger ||
        (isfinite(temperatureCelsius)&&temperatureCelsius>=ResQConfig::TEMP_PELIGRO_C) ||
        (isfinite(humidityPercent)&&humidityPercent>=ResQConfig::HUM_PELIGRO_PCT);
@@ -333,6 +351,7 @@ void ResQMonitorDevice::publishToCloud() {
 void ResQMonitorDevice::printHelp() const {
     Serial.println("[RESQ2] BOOT corto: pagina | doble: menu | largo: iniciar DEMO");
     Serial.println("[RESQ2] DEMO: GAS / TEMPERATURA / HUMEDAD / MOVIMIENTO");
+    Serial.println("[RESQ2] SERIAL: DEMO=GAS, DEMO=TEMP, DEMO=HUM, DEMO=MOV, DEMO=OFF");
     Serial.println("[RESQ2] SERIAL: SILENCE, UNSILENCE, HELP");
     Serial.println("[RESQ2] No usar como detector certificado de gas/incendio.");
 }
