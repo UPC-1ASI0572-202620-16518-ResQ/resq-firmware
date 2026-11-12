@@ -1,11 +1,11 @@
 /**
  * @file sketch.ino
- * @brief ResQ - Lab 2: ESP32 connectivity with ThingSpeak (Arduino IDE, ESP32 DevKit V1).
+ * @brief ResQ 2.0: monitor real + DEMO + ThingSpeak (Arduino IDE, ESP32 DevKit V1).
  *
  * Board: "DOIT ESP32 DEVKIT V1". Serial Monitor at 115200 baud with "New Line".
  * Credentials go in secrets.h (copy of secrets.example.h, never uploaded to GitHub).
  *
- * To change route, edit only LAB_ROUTE (and REAL_SENSORS for routes 2 and 3).
+ * Route 3: three real sensors, BOOT navigation, yellow LED and cloud DEMO.
  *
  * @author ResQ IoT development team
  */
@@ -15,7 +15,7 @@
 #include "ResQMonitorDevice.h"
 
 static const char PRODUCT_NAME[] = "ResQ";
-static const char TEAM_NAME[] = "ResQ IoT development team";   // TODO: team members
+static const char TEAM_NAME[] = "Fernando, Gonzalo, Pedro, Fabricio y Eduardo";
 static const unsigned long SERIAL_BAUD_RATE = 115200;
 static const unsigned long SERIAL_START_DELAY_MS = 500;
 
@@ -25,7 +25,7 @@ static const LabRoute LAB_ROUTE = LabRoute::ROUTE_3_REAL_WITH_ALARM;
 static const RealSensorSet REAL_SENSORS = {
     .isGasReal = true,
     .isTemperatureReal = true,
-    .isMotionReal = false,
+    .isMotionReal = true,
 };
 
 // OLED and LEDs: the pins the team already wired. Sensors and buzzer: the Cirkit design.
@@ -40,6 +40,7 @@ static const ResQPinMap RESQ_PINS = {
     .bootButtonPin = 0,
     .displaySdaPin = 21,
     .displaySclPin = 19,
+    .yellowLedPin = 25,
 };
 
 static const CloudCredentials CLOUD = {
