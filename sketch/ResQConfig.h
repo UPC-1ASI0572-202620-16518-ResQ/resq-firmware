@@ -18,6 +18,7 @@ constexpr float HUM_HISTERESIS_PCT = 3.0f;
 constexpr unsigned long PIR_WARMUP_MS = 60000UL;
 constexpr unsigned long GAS_WARMUP_MS = 120000UL; // Solo demostrativo; no reemplaza calibracion.
 constexpr unsigned long SENSOR_INTERVAL_MS = 2000UL;
+constexpr unsigned long OUTPUT_INTERVAL_MS = 20UL;
 constexpr unsigned long UI_INTERVAL_MS = 250UL;
 constexpr unsigned long PUBLISH_INTERVAL_MS = 20000UL;
 constexpr unsigned long WIFI_RETRY_MS = 10000UL;
