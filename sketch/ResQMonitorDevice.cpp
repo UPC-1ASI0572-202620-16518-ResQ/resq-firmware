@@ -248,10 +248,10 @@ void ResQMonitorDevice::applyOutputs() {
 
 const char* ResQMonitorDevice::alertName() const {
     if(gasDanger) return "ALERTA GAS";
+    if(isMotionDetected) return "MOVIMIENTO";
     if(!isReadingValid) return "ERROR DHT";
     if(tempLatch) return "TEMP ALTA";
     if(humidityLatch) return "HUMEDAD ALTA";
-    if(isMotionDetected) return "MOVIMIENTO";
     if(!gasReady()) return "CALENTANDO MQ2";
     if(ambientCaution) return "PRECAUCION GAS";
     return "NORMAL";
