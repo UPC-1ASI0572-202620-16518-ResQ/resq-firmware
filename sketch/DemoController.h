@@ -21,6 +21,7 @@ public:
         if (!menu || running) return;
         choice = static_cast<DemoScenario>((static_cast<int>(choice)+1)%4);
     }
+    void startScenario(DemoScenario s, unsigned long now) { choice=s; menu=true; start(now); }
     void start(unsigned long now) {
         if (!menu || running) return;
         running = true;
