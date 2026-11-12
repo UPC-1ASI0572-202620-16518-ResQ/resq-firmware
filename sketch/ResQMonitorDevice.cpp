@@ -1,7 +1,6 @@
 #include "ResQMonitorDevice.h"
 
 namespace {
-constexpr uint32_t RGB_UNUSED=0; // No LEDs RGB: las salidas son discretas.
 bool hysteresisHigh(float value, float threshold, float margin, bool previous) {
     return value >= (previous ? threshold-margin : threshold);
 }
@@ -71,7 +70,9 @@ void ResQMonitorDevice::update() {
     const ConsoleCommand command=serialConsole.poll();
     if(command.type!=ConsoleCommandType::NONE) handleConsoleCommand(command);
     handleButton(bootButton.poll());
+    const bool wasDemoActive=demo.active();
     demo.update(now);
+    if(wasDemoActive && !demo.active()) takeReadings();
     wifiConnection.poll();
 
     if(now-lastReadingMs>=ResQConfig::SENSOR_INTERVAL_MS) takeReadings();
@@ -102,7 +103,7 @@ void ResQMonitorDevice::handleButton(ButtonEvent event) {
             Serial.println("[DEMO] Cancelado");
         }
     }
-    evaluateState();
+    takeReadings(); // aplica las muestras sintéticas inmediatamente al entrar/salir
     applyOutputs();
     refreshDisplay();
 }
@@ -248,7 +249,7 @@ void ResQMonitorDevice::refreshDisplay() {
         statusDisplay.setLine(1,"Corto: siguiente");
         statusDisplay.setLine(2,"Largo: ejecutar");
         statusDisplay.setLine(3,"Doble: salir");
-    } else if(gasDanger || isMotionDetected || (!demo.active() && !isReadingValid)) {
+    } else if(gasDanger || isMotionDetected || tempLatch || humidityLatch || !isReadingValid) {
         statusDisplay.setTitle("ALERTA");
         statusDisplay.setLine(0,alertName());
         snprintf(line,sizeof(line),"Gas:%d T:%.1fC",gasRawLevel,temperatureCelsius);
