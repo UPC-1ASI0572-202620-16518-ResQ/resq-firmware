@@ -1,54 +1,33 @@
 #ifndef ALARM_BUZZER_H
 #define ALARM_BUZZER_H
 
-/**
- * @file AlarmBuzzer.h
- * @brief Active buzzer (the one in the MVP list): it beeps by itself when its pin is HIGH.
- *
- * An active buzzer has its own oscillator inside, so it only needs ON/OFF.
- * (A passive piezo would need tone() with a frequency instead.)
- *
- * @author ResQ IoT development team
- */
-
 #include <Arduino.h>
-
-/**
- * @class AlarmBuzzer
- * @brief Turns the audible alarm on and off.
- */
+// Buzzer activo, con transistor controlador en GPIO 27.
+// Sin tone(): los patrones usan pulsos digitales sin bloquear el loop.
+enum class BuzzerPattern { SILENT, GAS, MOTION };
 class AlarmBuzzer {
 public:
-    /**
-     * @brief Builds the buzzer.
-     * @param signalPin Pin wired to the buzzer "+" leg.
-     */
-    explicit AlarmBuzzer(int signalPin) : signalPin(signalPin), isSounding(false) {}
-
-    /** @brief Configures the pin and starts silent. Call it once from setup(). */
-    void begin() {
-        pinMode(signalPin, OUTPUT);
-        setSounding(false);
+    explicit AlarmBuzzer(int pin) : pin(pin) {}
+    void begin() { pinMode(pin, OUTPUT); digitalWrite(pin, LOW); }
+    void setPattern(BuzzerPattern p) {
+        if (pattern != p) { pattern=p; phaseStart=millis(); }
+        update();
     }
-
-    /**
-     * @brief Starts or stops the alarm.
-     * @param shouldSound true to make it beep.
-     */
-    void setSounding(bool shouldSound) {
-        isSounding = shouldSound;
-        digitalWrite(signalPin, isSounding ? HIGH : LOW);
+    void update() {
+        unsigned long elapsed=millis()-phaseStart;
+        bool on=false;
+        if (pattern == BuzzerPattern::GAS) {
+            unsigned long t=elapsed%1600UL;
+            on=(t<200UL)||(t>=400UL && t<600UL);
+        } else if (pattern == BuzzerPattern::MOTION) {
+            unsigned long t=elapsed%1200UL;
+            on=(t<150UL)||(t>=300UL && t<450UL)||(t>=600UL && t<750UL);
+        }
+        digitalWrite(pin,on?HIGH:LOW);
     }
-
-    /**
-     * @brief Current state.
-     * @return true while the buzzer beeps.
-     */
-    bool getIsSounding() const { return isSounding; }
-
 private:
-    int signalPin;
-    bool isSounding;
+    int pin;
+    BuzzerPattern pattern=BuzzerPattern::SILENT;
+    unsigned long phaseStart=0;
 };
-
-#endif // ALARM_BUZZER_H
+#endif
