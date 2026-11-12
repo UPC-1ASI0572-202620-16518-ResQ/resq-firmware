@@ -66,6 +66,9 @@ public:
         return isReady;
     }
 
+    /** @brief Changes the visible heading without affecting stored sensor data. */
+    void setTitle(const char* newTitle) { title = newTitle; }
+
     /** @brief Empties every body line. */
     void clearLines() {
         for (int lineIndex = 0; lineIndex < BODY_LINE_COUNT; lineIndex++) {
