@@ -64,7 +64,7 @@ No hay rotación automática. Una alerta muestra un aviso destacado sobre la pá
 Escenarios: **GAS**, **TEMPERATURA**, **HUMEDAD**, **MOVIMIENTO**. Se inyectan valores de prueba desde `ResQConfig.h` al mismo motor de evaluación de sensores reales:
 - GAS: 3000 ADC.
 - TEMPERATURA: 52.0 °C.
-- HUMEDAD: 93 %.
+- HUMEDAD: 97 %.
 - MOVIMIENTO: activo.
 
 La demostración permanece como mínimo 25 s una vez publicado correctamente o hasta un máximo de 90 s si no se puede publicar; puede cancelarse manualmente. No se necesita liberar gas, aumentar calor real ni humedecer el DHT22.
