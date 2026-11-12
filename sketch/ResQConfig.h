@@ -11,8 +11,8 @@ constexpr int GAS_HISTERESIS = 120;
 constexpr float TEMP_PRECAUCION_C = 40.0f;
 constexpr float TEMP_PELIGRO_C = 50.0f;
 constexpr float TEMP_HISTERESIS_C = 1.5f;
-constexpr float HUM_PRECAUCION_PCT = 80.0f;
-constexpr float HUM_PELIGRO_PCT = 90.0f;
+constexpr float HUM_PRECAUCION_PCT = 90.0f;
+constexpr float HUM_PELIGRO_PCT = 95.0f;
 constexpr float HUM_HISTERESIS_PCT = 3.0f;
 
 constexpr unsigned long PIR_WARMUP_MS = 60000UL;
@@ -29,7 +29,7 @@ constexpr unsigned long DEMO_DONE_HOLD_MS = 2500UL;
 
 constexpr int DEMO_GAS_ADC = 3000;
 constexpr float DEMO_TEMP_C = 52.0f;
-constexpr float DEMO_HUM_PCT = 93.0f;
+constexpr float DEMO_HUM_PCT = 97.0f;
 constexpr unsigned long RED_BLINK_HALF_MS = 350UL;
 constexpr unsigned long YELLOW_BLINK_HALF_MS = 250UL;
 }
