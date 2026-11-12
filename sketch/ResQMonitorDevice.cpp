@@ -76,9 +76,12 @@ void ResQMonitorDevice::update() {
     wifiConnection.poll();
 
     if(now-lastReadingMs>=ResQConfig::SENSOR_INTERVAL_MS) takeReadings();
-    if(now-lastOutputMs>=ResQConfig::UI_INTERVAL_MS) {
+    if(now-lastOutputMs>=ResQConfig::OUTPUT_INTERVAL_MS) {
         lastOutputMs=now;
         applyOutputs();
+    }
+    if(now-lastUiMs>=ResQConfig::UI_INTERVAL_MS) {
+        lastUiMs=now;
         refreshDisplay();
     }
     if(now-lastPublishMs>=ResQConfig::PUBLISH_INTERVAL_MS) publishToCloud();
