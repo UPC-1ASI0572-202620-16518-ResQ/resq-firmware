@@ -263,7 +263,7 @@ void ResQMonitorDevice::refreshDisplay() {
     statusDisplay.clearLines();
     statusDisplay.setTag(demo.active()||demo.menuOpen()?"DEMO":"REAL");
 
-    if(demo.menuOpen()) {
+    if(demo.menuOpen() && !realDanger) {
         statusDisplay.setTitle("MENU DEMO");
         snprintf(line,sizeof(line),"Prueba: %s",demo.selectedName());
         statusDisplay.setLine(0,line);
@@ -329,18 +329,19 @@ void ResQMonitorDevice::publishToCloud() {
         Serial.println("[TS] Se omite muestra: temperatura/humedad invalidas");
         return;
     }
-    // Field 4 incluye una alerta sonora por gas O un evento PIR.
-    // Field 5 distingue especificamente movimiento; la DEMO usa iguales fields.
+    // Field 4 comunica la alerta general, aunque temperatura y humedad no suenen.
+    // Field 5 comunica especificamente movimiento. Misma ruta para DEMO y real.
     const bool motionToPublish=isMotionDetected || pendingMotionCloud;
-    const bool alarmToPublish=gasDanger || motionToPublish;
-    const char* status=demo.active()?"RESQ ALERTA":"RESQ MONITOREO";
+    const bool alertToPublish=gasDanger || (gasReady() && gasRawLevel>=ResQConfig::GAS_PRECAUCION)
+        || tempLatch || humidityLatch || motionToPublish;
+    const char* status=alertName();
     SafetyStatusRecord record(gasRawLevel,temperatureCelsius,
-        wifiConnection.getRssiDbm(),alarmToPublish,motionToPublish,humidityPercent,status);
+        wifiConnection.getRssiDbm(),alertToPublish,motionToPublish,humidityPercent,status);
     lastPublishResult=thingSpeakPublisher.publish(record);
     lastPublishMs=millis(); // evita enviar muy seguido tras peticion HTTP
     Serial.printf("[TS] gas=%d temp=%.1f hum=%.1f mov=%d alerta=%d -> %d\n",
         gasRawLevel,temperatureCelsius,humidityPercent,
-        motionToPublish?1:0,alarmToPublish?1:0,lastPublishResult);
+        motionToPublish?1:0,alertToPublish?1:0,lastPublishResult);
     if(lastPublishResult==ThingSpeakPublisher::RESULT_OK) {
         lastCloudOkMs=millis();
         pendingMotionCloud=false;
