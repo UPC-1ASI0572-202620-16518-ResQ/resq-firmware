@@ -123,3 +123,10 @@ La integración con el **frontend** no está en este repositorio: será la fase 
 - `OledStatusDisplay.h`: render y títulos de cada página.
 - `ResQMonitorDevice.h/.cpp`: integración de sensores, estado, salidas y nube.
 - `ThingSpeakPublisher.h`: mapeo de los seis fields.
+
+
+## Diagnóstico de hotspot Wi-Fi (iPhone)
+
+Si el Monitor Serie muestra `[TS] Sin WiFi, no se publica`, verificar que el SSID de `secrets.h` coincida con el nombre visible del hotspot; activar **Permitir a otros conectarse** y **Maximizar compatibilidad**; mantener el iPhone desbloqueado y visible en la pantalla Compartir Internet durante la asociación. Desactivar VPN/hotspot con limitaciones de operadores si corresponde. No compartir credenciales.
+
+La conexión arranca sin bloquear el circuito. El firmware imprime `[WiFi] Intentando conectar a SSID: ...`, luego `[WiFi] Conectado` y la IP si establece sesión. Si falla, muestra el código de estado cada 25 s y reinicia la asociación sin llamar a `WiFi.reconnect()` mientras ya se está conectando. Esto permite distinguir la conectividad de los errores de ThingSpeak; el mensaje `[TS] ... -> 200` confirma la escritura aceptada por el servicio.
