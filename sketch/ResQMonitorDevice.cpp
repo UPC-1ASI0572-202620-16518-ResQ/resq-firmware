@@ -233,15 +233,19 @@ void ResQMonitorDevice::applyOutputs() {
     const unsigned long now=millis();
     const bool redBlink=(now/ResQConfig::RED_BLINK_HALF_MS)%2==0;
     const bool yellowBlink=(now/ResQConfig::YELLOW_BLINK_HALF_MS)%2==0;
-    const bool environmentalAlert=ambientCaution || ambientDanger;
-    greenLed.setOn(!environmentalAlert);
-    redLed.setOn(gasDanger || (environmentalAlert && redBlink));
+    // Gas, temperatura y humedad comparten una misma alarma ambiental.
+    // Calentamiento/error DHT tienen aviso visual, pero no alarma sonora.
+    const bool environmentalAlarm = gasDanger || tempLatch || humidityLatch ||
+        (gasReady() && gasRawLevel>=ResQConfig::GAS_PRECAUCION);
+    const bool environmentalNotice = ambientCaution || ambientDanger;
+    greenLed.setOn(!environmentalNotice);
+    redLed.setOn(environmentalAlarm || (environmentalNotice && redBlink));
     yellowLed.setOn(isMotionDetected && yellowBlink);
-    boardLed.setOn(gasDanger);
+    boardLed.setOn(environmentalAlarm);
     BuzzerPattern pattern=BuzzerPattern::SILENT;
     if(!isAlarmSilenced) {
-        if(gasDanger) pattern=BuzzerPattern::GAS;
-        else if(isMotionDetected) pattern=BuzzerPattern::MOTION;
+        if(environmentalAlarm) pattern=BuzzerPattern::GAS; // 2 pitidos ambientales
+        else if(isMotionDetected) pattern=BuzzerPattern::MOTION; // 3 pitidos PIR
     }
     alarmBuzzer.setPattern(pattern);
 }
