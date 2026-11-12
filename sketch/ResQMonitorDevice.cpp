@@ -1,322 +1,358 @@
-/**
- * @file ResQMonitorDevice.cpp
- * @brief Implements ResQMonitorDevice.
- * @author ResQ IoT development team
- */
-
 #include "ResQMonitorDevice.h"
 
 namespace {
-constexpr char DISPLAY_TITLE[] = "RESQ";
-constexpr char SIMULATED_TAG[] = "SIM";
-constexpr char REAL_TAG[] = "REAL";
-constexpr int DISPLAY_READINGS_LINE = 0;
-constexpr int DISPLAY_CLIMATE_LINE = 1;
-constexpr int DISPLAY_STATUS_LINE = 2;
-constexpr int DISPLAY_CLOUD_LINE = 3;
-constexpr int BLINK_PHASE_COUNT = 2;
-constexpr int NO_PUBLISH_YET = 0;
+bool hysteresisHigh(float value, float threshold, float margin, bool previous) {
+    return value >= (previous ? threshold-margin : threshold);
+}
 }
 
-ResQMonitorDevice::ResQMonitorDevice(const ResQPinMap& pins, LabRoute route, const RealSensorSet& realSensors,
-                                     const CloudCredentials& credentials)
-    : gasDetector(pins.gasAnalogPin, GAS_WARM_UP_TIME_MS),
-      temperatureSensor(pins.temperatureDataPin),
-      motionDetector(pins.motionPin),
-      bootButton(pins.bootButtonPin),
-      greenLed(pins.greenLedPin),
-      redLed(pins.redLedPin),
-      boardLed(pins.boardLedPin),
-      alarmBuzzer(pins.buzzerPin),
-      statusDisplay(DISPLAY_I2C_ADDRESS, pins.displaySdaPin, pins.displaySclPin, DISPLAY_TITLE),
+ResQMonitorDevice::ResQMonitorDevice(
+    const ResQPinMap& p, LabRoute r, const RealSensorSet& sensors,
+    const CloudCredentials& credentials)
+    : gasDetector(p.gasAnalogPin, ResQConfig::GAS_WARMUP_MS),
+      temperatureSensor(p.temperatureDataPin),
+      motionDetector(p.motionPin), bootButton(p.bootButtonPin),
+      greenLed(p.greenLedPin), redLed(p.redLedPin),
+      yellowLed(p.yellowLedPin), boardLed(p.boardLedPin),
+      alarmBuzzer(p.buzzerPin),
+      statusDisplay(DISPLAY_I2C_ADDRESS,p.displaySdaPin,p.displaySclPin,"RESQ"),
       wifiConnection(credentials.wifiSsid, credentials.wifiPassword),
       thingSpeakPublisher(credentials.channelId, credentials.writeApiKey),
-      route(route),
-      realSensors(realSensors),
-      gasRawLevel(GasDetector::MIN_RAW_LEVEL),
-      temperatureCelsius(NAN),
-      humidityPercent(NAN),
-      isMotionDetected(false),
-      isReadingValid(false),
-      riskLevel(RiskLevel::SENSOR_ERROR),
-      isAlarmSilenced(false),
-      lastPublishResult(NO_PUBLISH_YET),
-      lastReadingMs(0),
-      lastOutputRefreshMs(0),
-      lastPublishMs(0) {}
-
-void ResQMonitorDevice::begin() {
-    gasDetector.begin();
-    if (usesRealTemperature()) temperatureSensor.begin();
-    if (usesRealMotion()) motionDetector.begin();
-    sensorSimulator.begin();
-    bootButton.begin();
-    greenLed.begin();
-    redLed.begin();
-    boardLed.begin();
-    alarmBuzzer.begin();
-
-    if (!statusDisplay.begin()) {
-        Serial.println("[OLED] No responde (revisa cables o prueba 0x3D); el resto sigue funcionando.");
-    }
-    bool isAnySensorReal = usesRealGas() || usesRealTemperature() || usesRealMotion();
-    statusDisplay.setTag(isAnySensorReal ? REAL_TAG : SIMULATED_TAG);
-    statusDisplay.setLine(DISPLAY_STATUS_LINE, "Conectando Wi-Fi...");
-    statusDisplay.render();
-
-    Serial.print("[WiFi] Conectando");
-    if (wifiConnection.begin()) {
-        wifiConnection.printDetails();
-    } else {
-        Serial.println("[WiFi] Sin conexion: la alarma funciona igual y se reintenta en cada envio.");
-    }
-    thingSpeakPublisher.begin();
-
-    Serial.printf("[Lab2] Ruta %d | Gas: %s | Temperatura: %s | Movimiento: %s\n", static_cast<int>(route),
-                  sourceText(usesRealGas()), sourceText(usesRealTemperature()), sourceText(usesRealMotion()));
-    printHelp();
-    takeReadings();
-}
-
-void ResQMonitorDevice::update() {
-    ConsoleCommand command = serialConsole.poll();
-    if (command.type != ConsoleCommandType::NONE) handleConsoleCommand(command);
-    if (bootButton.wasPressed()) handleBootButton();
-
-    if (millis() - lastReadingMs >= SENSOR_READ_INTERVAL_MS) takeReadings();
-    if (millis() - lastOutputRefreshMs >= OUTPUT_REFRESH_INTERVAL_MS) {
-        lastOutputRefreshMs = millis();
-        applyOutputs();
-    }
-    if (millis() - lastPublishMs >= PUBLISH_INTERVAL_MS) publishToCloud();
-}
+      route(r),realSensors(sensors) {}
 
 bool ResQMonitorDevice::usesRealGas() const {
-    return route != LabRoute::ROUTE_1_SIMULATED && realSensors.isGasReal;
+    return route!=LabRoute::ROUTE_1_SIMULATED && realSensors.isGasReal;
 }
-
 bool ResQMonitorDevice::usesRealTemperature() const {
-    return route != LabRoute::ROUTE_1_SIMULATED && realSensors.isTemperatureReal;
+    return route!=LabRoute::ROUTE_1_SIMULATED && realSensors.isTemperatureReal;
 }
-
 bool ResQMonitorDevice::usesRealMotion() const {
-    return route != LabRoute::ROUTE_1_SIMULATED && realSensors.isMotionReal;
+    return route!=LabRoute::ROUTE_1_SIMULATED && realSensors.isMotionReal;
 }
-
 bool ResQMonitorDevice::usesAlarmLogic() const {
-    return route != LabRoute::ROUTE_2_REAL_SENSOR;
+    return route!=LabRoute::ROUTE_2_REAL_SENSOR;
 }
-
-void ResQMonitorDevice::handleConsoleCommand(const ConsoleCommand& command) {
-    switch (command.type) {
-        case ConsoleCommandType::SET_GAS:
-            if (usesRealGas()) { Serial.println("[SIM] Gas real: G= ignorado"); return; }
-            sensorSimulator.setGasBase(static_cast<int>(command.value));
-            break;
-        case ConsoleCommandType::SET_TEMPERATURE:
-            if (usesRealTemperature()) { Serial.println("[SIM] DHT real: T= ignorado"); return; }
-            sensorSimulator.setTemperatureBase(command.value);
-            break;
-        case ConsoleCommandType::SET_MOTION:
-            sensorSimulator.setMotion(command.value != 0.0f);
-            break;
-        case ConsoleCommandType::SILENCE:
-            isAlarmSilenced = true;
-            Serial.println("[App] Alarma silenciada (el buzzer calla, Field 4 sigue en 1)");
-            return;
-        case ConsoleCommandType::UNSILENCE:
-            isAlarmSilenced = false;
-            Serial.println("[App] Alarma reactivada");
-            return;
-        case ConsoleCommandType::HELP:
-            printHelp();
-            return;
-        default:
-            return;
-    }
-    Serial.printf("[SIM] G=%d T=%.1f M=%d | fuga BOOT: %s\n", sensorSimulator.getGasBaseRaw(),
-                  sensorSimulator.getTemperatureBaseCelsius(), sensorSimulator.readMotion() ? 1 : 0,
-                  sensorSimulator.getIsGasLeakOpen() ? "ON" : "OFF");
-    takeReadings();   // show the change right away, without waiting 2 s
+bool ResQMonitorDevice::pirReady() const {
+    return !usesRealMotion() || (millis()-bootMs>=ResQConfig::PIR_WARMUP_MS);
 }
+bool ResQMonitorDevice::gasReady() const {
+    return !usesRealGas() || (millis()-bootMs>=ResQConfig::GAS_WARMUP_MS);
+}
+void ResQMonitorDevice::begin() {
+    bootMs=millis();
+    gasDetector.begin();
+    if(usesRealTemperature()) temperatureSensor.begin();
+    if(usesRealMotion()) motionDetector.begin();
+    sensorSimulator.begin();
+    bootButton.begin();
+    greenLed.begin(); redLed.begin(); yellowLed.begin(); boardLed.begin();
+    alarmBuzzer.begin();
+    oledOk=statusDisplay.begin();
+    statusDisplay.setTag("REAL");
+    statusDisplay.setLine(0,"Iniciando sensores...");
+    statusDisplay.setLine(1,"BOOT: cambiar pagina");
+    statusDisplay.setLine(2,"Doble: menu DEMO");
+    statusDisplay.setLine(3,"WiFi: conectando");
+    statusDisplay.render();
 
-void ResQMonitorDevice::handleBootButton() {
-    bool isLeakOpen = sensorSimulator.toggleGasLeak();
-    Serial.printf("[SIM] BOOT: fuga de gas %s\n", isLeakOpen ? "ON" : "OFF");
-    if (usesRealGas()) Serial.println("[SIM] (el gas es real en esta ruta, la fuga simulada no se usa)");
+    // Asociacion Wi-Fi iniciada sin bloquear el monitoreo local.
+    wifiConnection.begin();
+    thingSpeakPublisher.begin();
+    Serial.println("[RESQ2] Inicio | GPIO PIR=33, LED amarillo=25 | BOOT interfaz");
+    printHelp();
     takeReadings();
-}
-
-void ResQMonitorDevice::takeReadings() {
-    lastReadingMs = millis();
-    isReadingValid = true;
-
-    gasRawLevel = usesRealGas() ? gasDetector.read() : sensorSimulator.readGasLevel();
-
-    if (usesRealTemperature()) {
-        if (!temperatureSensor.read()) {
-            Serial.println("[DHT] Error de lectura");
-            isReadingValid = false;
-        }
-        temperatureCelsius = temperatureSensor.getTemperatureCelsius();
-        humidityPercent = temperatureSensor.getHumidityPercent();
-    } else {
-        temperatureCelsius = sensorSimulator.readTemperatureCelsius();
-        humidityPercent = sensorSimulator.readHumidityPercent();
-    }
-
-    isMotionDetected = usesRealMotion() ? motionDetector.read() : sensorSimulator.readMotion();
-
-    isReadingValid = isReadingValid && isfinite(temperatureCelsius) && isfinite(humidityPercent);
-    Serial.printf("[Medicion] Gas=%d ADC | T=%.1f C | HR=%.1f %% | DHT=%s | Mov=%d (%s)\n",
-                  gasRawLevel, temperatureCelsius, humidityPercent,
-                  isReadingValid ? "OK" : "ERROR", isMotionDetected ? 1 : 0, sourceText(usesRealMotion()));
-    RiskLevel newRiskLevel = evaluateRiskLevel();
-    if (newRiskLevel != riskLevel) {
-        Serial.printf("[Riesgo] %s -> %s | gas %d | temp %.1f C\n", riskLevelToText(riskLevel),
-                      riskLevelToText(newRiskLevel), gasRawLevel, temperatureCelsius);
-        riskLevel = newRiskLevel;
-        if (riskLevel == RiskLevel::NORMAL) isAlarmSilenced = false;   // the next alarm sounds again
-    }
     applyOutputs();
     refreshDisplay();
 }
 
-RiskLevel ResQMonitorDevice::evaluateRiskLevel() const {
-    // Known danger wins even during MQ warm-up or DHT failure.
-    if (gasRawLevel >= GAS_DANGER_RAW_LEVEL || temperatureCelsius >= TEMPERATURE_DANGER_CELSIUS) {
-        return RiskLevel::DANGER;
+void ResQMonitorDevice::update() {
+    const unsigned long now=millis();
+    const ConsoleCommand command=serialConsole.poll();
+    if(command.type!=ConsoleCommandType::NONE) handleConsoleCommand(command);
+    handleButton(bootButton.poll());
+    const bool wasDemoActive=demo.active();
+    demo.update(now);
+    if(wasDemoActive && !demo.active()) takeReadings();
+    wifiConnection.poll();
+
+    if(now-lastReadingMs>=ResQConfig::SENSOR_INTERVAL_MS) takeReadings();
+    if(now-lastOutputMs>=ResQConfig::OUTPUT_INTERVAL_MS) {
+        lastOutputMs=now;
+        applyOutputs();
     }
-    if (!isReadingValid) return RiskLevel::SENSOR_ERROR;
-    if (usesRealGas() && !gasDetector.isWarmedUp()) return RiskLevel::WARMING_UP;
-    if (gasRawLevel >= GAS_CAUTION_RAW_LEVEL || temperatureCelsius >= TEMPERATURE_CAUTION_CELSIUS) {
-        return RiskLevel::CAUTION;
-    }
-    return RiskLevel::NORMAL;
-}
-
-bool ResQMonitorDevice::isAlarmOn() const {
-    return usesAlarmLogic() && riskLevel == RiskLevel::DANGER;
-}
-
-void ResQMonitorDevice::applyOutputs() {
-    if (!usesAlarmLogic()) {
-        // Route 2: data only; a sensor fault must still be visible.
-        greenLed.setOn(isReadingValid);
-        redLed.setOn(!isReadingValid);
-        boardLed.setOn(false);
-        alarmBuzzer.setSounding(false);
-        return;
-    }
-    // Green: NORMAL. Red blinking: CAUTION, WARMING_UP or SENSOR_ERROR. Red steady + buzzer: DANGER.
-    const bool isBlinkPhaseOn = (millis() / CAUTION_BLINK_HALF_PERIOD_MS) % BLINK_PHASE_COUNT;
-    bool isRedLedOn = false;
-    if (riskLevel == RiskLevel::DANGER) isRedLedOn = true;
-    else if (riskLevel != RiskLevel::NORMAL) isRedLedOn = isBlinkPhaseOn;
-
-    greenLed.setOn(riskLevel == RiskLevel::NORMAL);
-    redLed.setOn(isRedLedOn);
-    boardLed.setOn(isAlarmOn());
-    alarmBuzzer.setSounding(isAlarmOn() && !isAlarmSilenced);
-}
-
-void ResQMonitorDevice::refreshDisplay() {
-    char line[OledStatusDisplay::LINE_SIZE];
-    statusDisplay.clearLines();
-
-    snprintf(line, sizeof(line), "Gas:%d ADC M:%d", gasRawLevel, isMotionDetected ? 1 : 0);
-    statusDisplay.setLine(DISPLAY_READINGS_LINE, line);
-
-    if (isReadingValid) {
-        // CP437 degree glyph; size 1 fits 21 characters in 128 pixels.
-        snprintf(line, sizeof(line), "T:%.1f%cC H:%.1f%%", temperatureCelsius, 248, humidityPercent);
-    } else {
-        snprintf(line, sizeof(line), "T:-- H:-- ERROR DHT");
-    }
-    statusDisplay.setLine(DISPLAY_CLIMATE_LINE, line);
-
-    if (riskLevel == RiskLevel::WARMING_UP) {
-        snprintf(line, sizeof(line), "CALENTANDO %lu s", gasDetector.getRemainingWarmUpSeconds());
-    } else if (isAlarmOn() && isAlarmSilenced) {
-        snprintf(line, sizeof(line), "PELIGRO SILENCIADO");
-    } else {
-        snprintf(line, sizeof(line), "%s", buildStatusMessage());
-    }
-    statusDisplay.setLine(DISPLAY_STATUS_LINE, line);
-
-    if (!isReadingValid) {
-        snprintf(line, sizeof(line), "DHT ERR TS:OMITIDO");
-    } else if (!wifiConnection.isConnected()) {
-        snprintf(line, sizeof(line), "WiFi:OFF TS:SIN RED");
-    } else if (lastPublishResult == NO_PUBLISH_YET) {
-        snprintf(line, sizeof(line), "WiFi:ON TS:ESPERA");
-    } else {
-        snprintf(line, sizeof(line), "WiFi:ON TS:%s", lastPublishResult == ThingSpeakPublisher::RESULT_OK ? "OK" : "ERROR");
-    }
-    statusDisplay.setLine(DISPLAY_CLOUD_LINE, line);
-
-    statusDisplay.render();
-}
-
-const char* ResQMonitorDevice::buildStatusMessage() const {
-    if (!isReadingValid && riskLevel != RiskLevel::DANGER) return "ERROR SENSOR DHT";
-    if (!usesAlarmLogic()) return "SOLO MONITOREO";
-    switch (riskLevel) {
-        case RiskLevel::WARMING_UP: return "CALENTANDO MQ-2";
-        case RiskLevel::DANGER:
-            return gasRawLevel >= GAS_DANGER_RAW_LEVEL ? "PELIGRO GAS" : "PELIGRO TEMPERATURA";
-        case RiskLevel::SENSOR_ERROR: return "ERROR SENSOR DHT";
-        case RiskLevel::CAUTION: return "PRECAUCION";
-        default: return "ESTADO: NORMAL";
-    }
-}
-
-void ResQMonitorDevice::publishToCloud() {
-    lastPublishMs = millis();
-    if (!wifiConnection.isConnected()) {
-        Serial.println("[WiFi] Reconectando...");
-        lastPublishResult = ThingSpeakPublisher::RESULT_NO_CONNECTION;
-        wifiConnection.reconnect();
+    if(now-lastUiMs>=ResQConfig::UI_INTERVAL_MS) {
+        lastUiMs=now;
         refreshDisplay();
-        return;
     }
-    if (!isReadingValid) {
-        lastPublishResult = ThingSpeakPublisher::RESULT_INVALID_SAMPLE;
-        Serial.println("[TS] Envio omitido: error DHT, sin mediciones validas.");
-        refreshDisplay();
-        return;
-    }
+    if(now-lastPublishMs>=ResQConfig::PUBLISH_INTERVAL_MS) publishToCloud();
+}
 
-    // Routes 1 and 3 also send a status message (ThingSpeak > Channel Status Updates)
-    SafetyStatusRecord record(gasRawLevel, temperatureCelsius, wifiConnection.getRssiDbm(), isAlarmOn(),
-                              isMotionDetected, humidityPercent, usesAlarmLogic() ? buildStatusMessage() : nullptr);
-    lastPublishResult = thingSpeakPublisher.publish(record);
-    lastPublishMs = millis(); // full cooldown after the synchronous network request
-    Serial.printf("[TS] gas=%d temp=%.1f humedad=%.1f rssi=%d alarma=%d mov=%d -> codigo %d (%s)\n",
-                  record.getGasRawLevel(), record.getTemperatureCelsius(), record.getHumidityPercent(), record.getRssiDbm(),
-                  record.getAlarmFlag(), record.getMotionFlag(), lastPublishResult,
-                  ThingSpeakPublisher::describeResult(lastPublishResult));
+void ResQMonitorDevice::handleButton(ButtonEvent event) {
+    if(event==ButtonEvent::NONE) return;
+    if(event==ButtonEvent::DOUBLE) {
+        demo.toggleMenu();
+        Serial.printf("[UI] Menu demo: %s\n",demo.menuOpen()?"ABIERTO":"CERRADO");
+    } else if(event==ButtonEvent::SHORT) {
+        if(demo.menuOpen()) demo.next();
+        else if(!demo.active())
+            page=static_cast<Page>((static_cast<int>(page)+1)%3);
+    } else if(event==ButtonEvent::LONG) {
+        if(demo.menuOpen()) {
+            demo.start(millis());
+            Serial.printf("[DEMO] Inicio %s\n",demo.selectedName());
+            lastPublishMs=millis()-ResQConfig::PUBLISH_INTERVAL_MS; // intenta enviar en proximo loop
+        } else if(demo.active()) {
+            demo.stop();
+            Serial.println("[DEMO] Cancelado");
+        }
+    }
+    takeReadings(); // aplica las muestras sintéticas inmediatamente al entrar/salir
+    applyOutputs();
     refreshDisplay();
 }
 
-void ResQMonitorDevice::printHelp() const {
-    Serial.println("[SIM] Comandos: G=valor (gas 0-4095)  T=valor (C)  M=1/M=0 (movimiento)");
-    Serial.println("[SIM]           SILENCE / UNSILENCE (buzzer)  HELP | BOOT = fuga de gas on/off");
-    Serial.printf("[SIM] Umbrales: gas %d precaucion / %d peligro | temp %.0f / %.0f C\n",
-                  GAS_CAUTION_RAW_LEVEL, GAS_DANGER_RAW_LEVEL,
-                  TEMPERATURE_CAUTION_CELSIUS, TEMPERATURE_DANGER_CELSIUS);
+void ResQMonitorDevice::handleConsoleCommand(const ConsoleCommand& c) {
+    switch(c.type) {
+        case ConsoleCommandType::SET_GAS:
+            if(usesRealGas()) Serial.println("[SIM] Gas real: G= ignorado");
+            else sensorSimulator.setGasBase(static_cast<int>(c.value));
+            break;
+        case ConsoleCommandType::SET_TEMPERATURE:
+            if(usesRealTemperature()) Serial.println("[SIM] DHT real: T= ignorado");
+            else sensorSimulator.setTemperatureBase(c.value);
+            break;
+        case ConsoleCommandType::SET_MOTION:
+            if(usesRealMotion()) Serial.println("[SIM] PIR real: M= ignorado");
+            else sensorSimulator.setMotion(c.value!=0.0f);
+            break;
+        case ConsoleCommandType::SILENCE:
+            isAlarmSilenced=true; break;
+        case ConsoleCommandType::UNSILENCE:
+            isAlarmSilenced=false; break;
+        case ConsoleCommandType::DEMO_GAS:
+            demo.startScenario(DemoScenario::GAS,millis());
+            lastPublishMs=millis()-ResQConfig::PUBLISH_INTERVAL_MS; break;
+        case ConsoleCommandType::DEMO_TEMP:
+            demo.startScenario(DemoScenario::TEMPERATURE,millis());
+            lastPublishMs=millis()-ResQConfig::PUBLISH_INTERVAL_MS; break;
+        case ConsoleCommandType::DEMO_HUM:
+            demo.startScenario(DemoScenario::HUMIDITY,millis());
+            lastPublishMs=millis()-ResQConfig::PUBLISH_INTERVAL_MS; break;
+        case ConsoleCommandType::DEMO_MOTION:
+            demo.startScenario(DemoScenario::MOTION,millis());
+            lastPublishMs=millis()-ResQConfig::PUBLISH_INTERVAL_MS; break;
+        case ConsoleCommandType::DEMO_OFF: demo.stop(); break;
+        case ConsoleCommandType::HELP:
+            printHelp(); break;
+        default: break;
+    }
+    takeReadings();
 }
 
-const char* ResQMonitorDevice::riskLevelToText(RiskLevel level) {
-    switch (level) {
-        case RiskLevel::WARMING_UP: return "WARMING_UP";
-        case RiskLevel::SENSOR_ERROR: return "SENSOR_ERROR";
-        case RiskLevel::DANGER: return "DANGER";
-        case RiskLevel::CAUTION: return "CAUTION";
-        default: return "NORMAL";
+void ResQMonitorDevice::takeReadings() {
+    const unsigned long now=millis();
+    lastReadingMs=now;
+
+    realGas=usesRealGas()?gasDetector.read():sensorSimulator.readGasLevel();
+    if(usesRealTemperature()) {
+        realDhtOk=temperatureSensor.read();
+        realTemperature=temperatureSensor.getTemperatureCelsius();
+        realHumidity=temperatureSensor.getHumidityPercent();
+    } else {
+        realTemperature=sensorSimulator.readTemperatureCelsius();
+        realHumidity=sensorSimulator.readHumidityPercent();
+        realDhtOk=true;
+    }
+    const bool rawMotion=usesRealMotion()?motionDetector.read():sensorSimulator.readMotion();
+    if(pirReady() && rawMotion) {
+        motionHoldUntil=now+ResQConfig::MOTION_LATCH_MS;
+        pendingMotionCloud=true;
+    }
+    realMotion=pirReady() && static_cast<int32_t>(motionHoldUntil-now)>0;
+
+    // Medicion efectiva: real por defecto; escenario DEMO puede sustituir
+    // una variable para atravesar exactamente el mismo evaluador y publicador.
+    gasRawLevel=realGas;
+    temperatureCelsius=realTemperature;
+    humidityPercent=realHumidity;
+    isMotionDetected=realMotion;
+    if(demo.active()) {
+        // Si falla el DHT durante la demostracion, usar valores sinteticos
+        // validos para permitir una prueba integral de telemetria.
+        if(!isfinite(temperatureCelsius)) temperatureCelsius=25.0f;
+        if(!isfinite(humidityPercent)) humidityPercent=50.0f;
+        switch(demo.selected()) {
+            case DemoScenario::GAS: gasRawLevel=ResQConfig::DEMO_GAS_ADC; break;
+            case DemoScenario::TEMPERATURE: temperatureCelsius=ResQConfig::DEMO_TEMP_C; break;
+            case DemoScenario::HUMIDITY: humidityPercent=ResQConfig::DEMO_HUM_PCT; break;
+            case DemoScenario::MOTION:
+                isMotionDetected=true;
+                pendingMotionCloud=true;
+                break;
+        }
+    }
+    isReadingValid=isfinite(temperatureCelsius)&&isfinite(humidityPercent)
+                   &&humidityPercent>=0.0f && humidityPercent<=100.0f;
+
+    evaluateState();
+    Serial.printf("[RESQ] Gas=%d ADC Temp=%.1f Hum=%.1f PIR=%d DEMO=%s DHT=%s\n",
+       gasRawLevel,temperatureCelsius,humidityPercent,isMotionDetected?1:0,
+       demo.active()?demo.selectedName():"OFF",isReadingValid?"OK":"ERROR");
+}
+
+void ResQMonitorDevice::evaluateState() {
+    // Los eventos reales no pueden ser ocultados por la DEMO.
+    realDanger=realGas>=ResQConfig::GAS_PELIGRO;
+    const bool canUseGas=gasReady() || demo.active() || realDanger;
+    gasLatch=canUseGas && hysteresisHigh(gasRawLevel,ResQConfig::GAS_PELIGRO,
+                 ResQConfig::GAS_HISTERESIS,gasLatch);
+    tempLatch=isfinite(temperatureCelsius) &&
+                 hysteresisHigh(temperatureCelsius,ResQConfig::TEMP_PRECAUCION_C,
+                     ResQConfig::TEMP_HISTERESIS_C,tempLatch);
+    humidityLatch=isfinite(humidityPercent) &&
+                 hysteresisHigh(humidityPercent,ResQConfig::HUM_PRECAUCION_PCT,
+                     ResQConfig::HUM_HISTERESIS_PCT,humidityLatch);
+    gasDanger=gasLatch || realDanger;
+    if(!gasDanger && !isMotionDetected) isAlarmSilenced=false;
+    ambientDanger=gasDanger ||
+       (isfinite(temperatureCelsius)&&temperatureCelsius>=ResQConfig::TEMP_PELIGRO_C) ||
+       (isfinite(humidityPercent)&&humidityPercent>=ResQConfig::HUM_PELIGRO_PCT);
+    ambientCaution=gasDanger || tempLatch || humidityLatch ||
+       (canUseGas && gasRawLevel>=ResQConfig::GAS_PRECAUCION) ||
+       !isReadingValid || !gasReady();
+}
+
+void ResQMonitorDevice::applyOutputs() {
+    if(!usesAlarmLogic()) {
+        greenLed.setOn(isReadingValid);
+        redLed.setOn(!isReadingValid);
+        yellowLed.setOn(false);
+        alarmBuzzer.setPattern(BuzzerPattern::SILENT);
+        return;
+    }
+    const unsigned long now=millis();
+    const bool redBlink=(now/ResQConfig::RED_BLINK_HALF_MS)%2==0;
+    const bool yellowBlink=(now/ResQConfig::YELLOW_BLINK_HALF_MS)%2==0;
+    const bool environmentalAlert=ambientCaution || ambientDanger;
+    greenLed.setOn(!environmentalAlert);
+    redLed.setOn(gasDanger || (environmentalAlert && redBlink));
+    yellowLed.setOn(isMotionDetected && yellowBlink);
+    boardLed.setOn(gasDanger);
+    BuzzerPattern pattern=BuzzerPattern::SILENT;
+    if(!isAlarmSilenced) {
+        if(gasDanger) pattern=BuzzerPattern::GAS;
+        else if(isMotionDetected) pattern=BuzzerPattern::MOTION;
+    }
+    alarmBuzzer.setPattern(pattern);
+}
+
+const char* ResQMonitorDevice::alertName() const {
+    if(gasDanger) return "ALERTA GAS";
+    if(isMotionDetected) return "MOVIMIENTO";
+    if(!isReadingValid) return "ERROR DHT";
+    if(tempLatch) return "TEMP ALTA";
+    if(humidityLatch) return "HUMEDAD ALTA";
+    if(!gasReady()) return "CALENTANDO MQ2";
+    if(ambientCaution) return "PRECAUCION GAS";
+    return "NORMAL";
+}
+
+void ResQMonitorDevice::refreshDisplay() {
+    if(!oledOk) return;
+    char line[OledStatusDisplay::LINE_SIZE];
+    statusDisplay.clearLines();
+    statusDisplay.setTag(demo.active()||demo.menuOpen()?"DEMO":"REAL");
+
+    if(demo.menuOpen() && !realDanger) {
+        statusDisplay.setTitle("MENU DEMO");
+        snprintf(line,sizeof(line),"Prueba: %s",demo.selectedName());
+        statusDisplay.setLine(0,line);
+        statusDisplay.setLine(1,"Corto: siguiente");
+        statusDisplay.setLine(2,"Largo: ejecutar");
+        statusDisplay.setLine(3,"Doble: salir");
+    } else if(gasDanger || isMotionDetected || tempLatch || humidityLatch || !isReadingValid) {
+        statusDisplay.setTitle("ALERTA");
+        statusDisplay.setLine(0,alertName());
+        snprintf(line,sizeof(line),"Gas:%d T:%.1fC",gasRawLevel,temperatureCelsius);
+        statusDisplay.setLine(1,line);
+        snprintf(line,sizeof(line),"PIR:%s Hum:%.0f%%",isMotionDetected?"SI":"NO",humidityPercent);
+        statusDisplay.setLine(2,line);
+        statusDisplay.setLine(3,demo.active()?"MODO DEMOSTRACION":"ALARMA LOCAL");
+    } else if(demo.active()) {
+        statusDisplay.setTitle("MODO DEMO");
+        statusDisplay.setLine(0,demo.selectedName());
+        snprintf(line,sizeof(line),"Gas:%d T:%.1fC",gasRawLevel,temperatureCelsius);
+        statusDisplay.setLine(1,line);
+        snprintf(line,sizeof(line),"Hum:%.0f%% PIR:%d",humidityPercent,isMotionDetected?1:0);
+        statusDisplay.setLine(2,line);
+        statusDisplay.setLine(3,"ENVIANDO A NUBE");
+    } else if(page==Page::HOME) {
+        statusDisplay.setTitle("RESQ");
+        snprintf(line,sizeof(line),"Gas:%d ADC",gasRawLevel);
+        statusDisplay.setLine(0,line);
+        snprintf(line,sizeof(line),"T:%.1fC H:%.1f%%",temperatureCelsius,humidityPercent);
+        statusDisplay.setLine(1,line);
+        snprintf(line,sizeof(line),"PIR:%s",isMotionDetected?"MOVIMIENTO":"SIN MOV.");
+        statusDisplay.setLine(2,line);
+        snprintf(line,sizeof(line),"ESTADO: %s",alertName());
+        statusDisplay.setLine(3,line);
+    } else if(page==Page::NETWORK) {
+        statusDisplay.setTitle("RED / NUBE");
+        statusDisplay.setLine(0,wifiConnection.isConnected()?"WiFi: CONECTADO":"WiFi: SIN RED");
+        snprintf(line,sizeof(line),"RSSI: %d dBm",wifiConnection.getRssiDbm());
+        statusDisplay.setLine(1,line);
+        snprintf(line,sizeof(line),"ThingSpeak: %s",lastPublishResult==200?"OK":lastPublishResult==0?"ESPERA":"ERROR");
+        statusDisplay.setLine(2,line);
+        if(lastCloudOkMs>0) snprintf(line,sizeof(line),"Ultimo OK: %lus",(millis()-lastCloudOkMs)/1000UL);
+        else snprintf(line,sizeof(line),"Sin envio confirmado");
+        statusDisplay.setLine(3,line);
+    } else {
+        statusDisplay.setTitle("DIAGNOSTICO");
+        statusDisplay.setLine(0,gasReady()?"MQ2: LISTO":"MQ2: CALENTANDO");
+        statusDisplay.setLine(1,isReadingValid?"DHT22: OK":"DHT22: ERROR");
+        statusDisplay.setLine(2,pirReady()?"PIR: LISTO":"PIR: CALENTANDO");
+        statusDisplay.setLine(3,"BOOT: CAMBIAR PAG.");
+    }
+    statusDisplay.render();
+}
+
+void ResQMonitorDevice::publishToCloud() {
+    const unsigned long now=millis();
+    lastPublishMs=now;
+    if(!wifiConnection.isConnected()) {
+        lastPublishResult=ThingSpeakPublisher::RESULT_NO_CONNECTION;
+        Serial.println("[TS] Sin WiFi, no se publica");
+        return;
+    }
+    if(!isReadingValid) {
+        lastPublishResult=ThingSpeakPublisher::RESULT_INVALID_SAMPLE;
+        Serial.println("[TS] Se omite muestra: temperatura/humedad invalidas");
+        return;
+    }
+    // Field 4 comunica la alerta general, aunque temperatura y humedad no suenen.
+    // Field 5 comunica especificamente movimiento. Misma ruta para DEMO y real.
+    const bool motionToPublish=isMotionDetected || pendingMotionCloud;
+    const bool alertToPublish=gasDanger || (gasReady() && gasRawLevel>=ResQConfig::GAS_PRECAUCION)
+        || tempLatch || humidityLatch || motionToPublish;
+    const char* status=alertName();
+    SafetyStatusRecord record(gasRawLevel,temperatureCelsius,
+        wifiConnection.getRssiDbm(),alertToPublish,motionToPublish,humidityPercent,status);
+    lastPublishResult=thingSpeakPublisher.publish(record);
+    lastPublishMs=millis(); // evita enviar muy seguido tras peticion HTTP
+    Serial.printf("[TS] gas=%d temp=%.1f hum=%.1f mov=%d alerta=%d -> %d\n",
+        gasRawLevel,temperatureCelsius,humidityPercent,
+        motionToPublish?1:0,alertToPublish?1:0,lastPublishResult);
+    if(lastPublishResult==ThingSpeakPublisher::RESULT_OK) {
+        lastCloudOkMs=millis();
+        pendingMotionCloud=false;
+        demo.acknowledgePublish();
     }
 }
 
-const char* ResQMonitorDevice::sourceText(bool isReal) {
-    return isReal ? "REAL" : "SIMULADO";
+void ResQMonitorDevice::printHelp() const {
+    Serial.println("[RESQ2] BOOT corto: pagina | doble: menu | largo: iniciar DEMO");
+    Serial.println("[RESQ2] DEMO: GAS / TEMPERATURA / HUMEDAD / MOVIMIENTO");
+    Serial.println("[RESQ2] SERIAL: DEMO=GAS, DEMO=TEMP, DEMO=HUM, DEMO=MOV, DEMO=OFF");
+    Serial.println("[RESQ2] SERIAL: SILENCE, UNSILENCE, HELP");
+    Serial.println("[RESQ2] No usar como detector certificado de gas/incendio.");
 }

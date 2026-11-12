@@ -18,7 +18,7 @@
 #include <Arduino.h>
 
 /** @brief Kind of command typed by the user. */
-enum class ConsoleCommandType { NONE, SET_GAS, SET_TEMPERATURE, SET_MOTION, SILENCE, UNSILENCE, HELP, UNKNOWN };
+enum class ConsoleCommandType { NONE, SET_GAS, SET_TEMPERATURE, SET_MOTION, SILENCE, UNSILENCE, HELP, DEMO_GAS, DEMO_TEMP, DEMO_HUM, DEMO_MOTION, DEMO_OFF, UNKNOWN };
 
 /** @brief One parsed command: its kind and, for G=/T=/M=, its number. */
 struct ConsoleCommand {
@@ -77,6 +77,11 @@ private:
         {"SILENCE", ConsoleCommandType::SILENCE, false},
         {"UNSILENCE", ConsoleCommandType::UNSILENCE, false},
         {"HELP", ConsoleCommandType::HELP, false},
+        {"DEMO=GAS", ConsoleCommandType::DEMO_GAS, false},
+        {"DEMO=TEMP", ConsoleCommandType::DEMO_TEMP, false},
+        {"DEMO=HUM", ConsoleCommandType::DEMO_HUM, false},
+        {"DEMO=MOV", ConsoleCommandType::DEMO_MOTION, false},
+        {"DEMO=OFF", ConsoleCommandType::DEMO_OFF, false},
     };
 };
 

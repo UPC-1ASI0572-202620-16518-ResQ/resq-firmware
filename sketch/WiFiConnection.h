@@ -28,22 +28,21 @@ public:
     WiFiConnection(const char* networkName, const char* networkPassword)
         : networkName(networkName), networkPassword(networkPassword) {}
 
-    /**
-     * @brief Tries to connect, waiting at most CONNECT_TIMEOUT_MS.
-     * @return true when connected.
-     */
+    /** @brief Starts association without waiting (local alarms remain responsive). */
     bool begin() {
         WiFi.mode(WIFI_STA);
         WiFi.setAutoReconnect(true);
-        WiFi.setTxPower(WIFI_POWER_8_5dBm);   // lab guide: lowers current peaks over USB
-        WiFi.begin(networkName, networkPassword);
-        unsigned long startMs = millis();
-        while (!isConnected() && millis() - startMs < CONNECT_TIMEOUT_MS) {
-            delay(CONNECT_RETRY_DELAY_MS);
-            Serial.print(".");
-        }
-        Serial.println();
+        WiFi.setTxPower(WIFI_POWER_8_5dBm);
+        WiFi.begin(networkName,networkPassword);
+        lastAttemptMs=millis();
         return isConnected();
+    }
+
+    void poll() {
+        if (!isConnected() && millis()-lastAttemptMs>=10000UL) {
+            lastAttemptMs=millis();
+            WiFi.reconnect();
+        }
     }
 
     /** @return true while the ESP32 is connected to the network. */
@@ -64,6 +63,7 @@ public:
 private:
     const char* networkName;
     const char* networkPassword;
+    unsigned long lastAttemptMs=0;
 };
 
 #endif // WIFI_CONNECTION_H

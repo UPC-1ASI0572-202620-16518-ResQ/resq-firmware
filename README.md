@@ -1,93 +1,125 @@
-# resq-firmware
-ESP32 firmware for ResQ IoT gas monitoring and alert system
+# ResQ 2.0 — firmware ESP32 (rama de pruebas)
 
-## ¿Qué es ResQ?
+Firmware del prototipo físico ResQ: monitoreo ambiental, detección de movimiento, alertas locales, OLED interactiva y publicación a ThingSpeak.
 
-ResQ es un monitor de seguridad para ambientes cerrados. Mide **gas/humo** (MQ-2), **temperatura** (DHT22) y **movimiento** (PIR) con un ESP32. Avisa con LED verde/rojo, buzzer y una pantalla OLED, y envía los datos a la nube.
+> **Estado:** implementación en rama de prueba. Aún no se ha verificado mediante compilación de Arduino ni con el montaje físico completo. No fusionar con `main` hasta completar la lista de validación.
+>
+> **Seguridad:** prototipo académico. No reemplaza un detector certificado de gas, incendios o intrusión. Las lecturas MQ-2 en ADC **no son ppm**, y los umbrales requieren calibración.
 
-## Integrantes
+## Hardware y conexiones
 
-| Integrante |
-| --- |
-| Fernando |
-| Gonzalo |
-| Pedro |
-| Fabricio |
-| Eduardo |
+| Elemento | Conexión ESP32 |
+|---|---|
+| OLED 128×64 SSD1306 | SDA GPIO21, SCL GPIO19, VCC 3V3, GND |
+| Sensor MQ-2 | VCC 5V (VIN con USB), GND; AO a GPIO34 **mediante divisor de tensión** |
+| Sensor DHT22 (módulo 3 pines) | + a 3V3, OUT a GPIO4, − a GND |
+| Sensor HC-SR501 PIR | VCC a 5V, OUT a GPIO33, GND |
+| LED verde + resistencia 220 Ω | GPIO23 |
+| LED rojo + resistencia 220 Ω | GPIO22 |
+| LED amarillo + resistencia 220 Ω | GPIO25 |
+| Buzzer activo + etapa transistor | GPIO27, con resistencia de base y transistor adecuados |
+| Botón integrado BOOT | GPIO0, sin cable extra |
 
-## Firmware actual: ruta 3, sensores reales y alarma local
+**Divisor MQ-2 del montaje:** cuatro resistencias de 10 kΩ en serie entre AO y GND; el punto medio (después de dos resistencias) va a GPIO34. Con AO=5 V, ese esquema ofrece aproximadamente 2.5 V en GPIO34. Comprobar todas las filas de la protoboard antes de alimentar. No usar el AO de 5V directamente en el ESP32.
 
-MQ en GPIO 34 y DHT22/AM2302 en GPIO 4 son reales. El PIR permanece
-simulado (`M=1` / `M=0`). `G=` y `T=` no sustituyen sensores reales.
-La humedad se monitoriza, sin umbrales de alarma.
+El MQ-2 necesita calentamiento y calibración, y el calefactor metálico se calienta al funcionar; evitar tocarlo. PIR y MQ-2 pueden sobrecargar una alimentación USB insuficiente. Los rieles 3.3V y 5V deben permanecer separados y los GND deben ser comunes.
 
-| Campo ThingSpeak | Dato |
-| --- | --- |
-| Field 1 | Gas MQ (ADC, 0–4095; no ppm) |
-| Field 2 | Temperatura (°C) |
-| Field 3 | RSSI Wi-Fi (dBm) |
-| Field 4 | Alarma de peligro (0/1, sigue en 1 al silenciar) |
-| Field 5 | Movimiento simulado (0/1) |
-| Field 6 | Humedad relativa (%) |
+## Estados e indicadores
 
-Habilitar **Field 6** en la configuración del canal ThingSpeak. Se conserva
-un único envío cada 20 s; si falla el DHT, se omite la muestra completa.
-El publicador también rechaza NaN/infinito antes de preparar la petición.
-Wi-Fi se reconecta sin esperar en cada ciclo de publicación cuando está desconectado.
-Nunca se imprimen contraseñas ni claves.
+Los estados ambientales y el movimiento se controlan **independientemente**:
 
-### Muestreo, seguridad y OLED
+| Situación | Verde | Rojo | Amarillo | Buzzer |
+|---|---|---|---|---|
+| Ambiente normal | Fijo | Apagado | Según movimiento | Silencio si no hay movimiento |
+| Gas peligro | Apagado | Fijo | Según movimiento | Dos pitidos cortos por ciclo |
+| Gas precaución | Apagado | Intermitente | Según movimiento | Silencio |
+| Temperatura/humedad alta | Apagado | Intermitente | Según movimiento | Silencio |
+| Movimiento PIR | Según ambiente | Según ambiente | Intermitente | Tres pitidos cortos por ciclo |
+| Error DHT / calentamiento MQ-2 | Apagado | Intermitente | Según movimiento | Silencio, salvo movimiento |
 
-El DHT se consulta como máximo cada 2000 ms, incluso al usar BOOT/comandos.
-Después de `begin()` espera 2 s antes del primer intento. Una lectura fallida
-invalida temperatura y humedad inmediatamente; no reutiliza el último dato correcto.
-Al recuperarse el sensor se reanudan las mediciones y los envíos en su intervalo normal.
+**Prioridad sonora:** gas > movimiento > silencio. Temperatura y humedad solo provocan alerta visual. Umbrales e intervalos se definen en `sketch/ResQConfig.h`; no están distribuidos como valores mágicos en el controlador.
 
-Se conservan los umbrales: gas 1400/2500 ADC y temperatura 40/50 °C
-para PRECAUCIÓN/PELIGRO. PELIGRO tiene prioridad, incluso durante los 20 s
-de calentamiento del MQ o ante un error DHT. Sin peligro conocido, un fallo
-DHT muestra ERROR SENSOR DHT: verde apagado y rojo intermitente, sin convertir
-el fallo en alarma de temperatura. NORMAL enciende verde; PRECAUCIÓN y
-calentamiento hacen parpadear rojo; PELIGRO enciende rojo y activa la salida
-del buzzer (salvo `SILENCE`). La humedad no modifica estas reglas.
+El PIR real se estabiliza durante 60 segundos. El MQ-2 tiene una espera inicial demostrativa de 120 segundos, insuficiente como validación de estabilidad/calibración comercial. Las mediciones del DHT22 se realizan cada 2 segundos. Los patrones de LED y buzzer no usan `delay()`.
 
-OLED 128 × 64: encabezado RESQ y cuatro líneas de hasta 21 caracteres:
-gas/movimiento, temperatura/humedad, seguridad, Wi-Fi/último envío.
-El grado usa la fuente CP437 y los estados usan texto ASCII para evitar
-acentos cortados. Si coinciden peligro por gas y fallo DHT, se ven ambos.
+## OLED: tres páginas fijas
 
-### Comprobación física pendiente
+Una pulsación breve de **BOOT** cambia entre:
+1. **RESQ / Principal:** gas, temperatura, humedad, PIR y alerta vigente.
+2. **RED / NUBE:** Wi-Fi, RSSI, estado ThingSpeak y segundos desde último envío confirmado.
+3. **DIAGNÓSTICO:** estado DHT22, PIR y MQ-2.
 
-1. Conectar el DHT de tres pines: `+` a 3.3 V, `OUT` a GPIO 4, `−` a GND.
-2. Verificar en Serie (115200) temperatura y HR, y las dos lecturas en OLED.
-3. Desconectar OUT: tras el siguiente intento (hasta 2 s, sin bloqueos de red),
-   comprobar ERROR DHT, verde apagado, rojo intermitente y ausencia de nuevos
-   registros ThingSpeak; reconectar y comprobar recuperación.
-4. Verificar Field 1–6 y espaciado de al menos 20 s entre intentos de envío.
-5. Verificar LEDs y la salida GPIO 27 bajo peligro y `SILENCE`/`UNSILENCE`.
-   El funcionamiento físico del buzzer no está confirmado. No provocar una
-   fuga real para probar alarmas; usar la ruta simulada en una prueba controlada.
+No hay rotación automática. Una alerta muestra un aviso destacado sobre la página seleccionada; al terminar se recupera la página anterior. Los avisos de simulación llevan etiqueta **DEMO** solo en la OLED. Durante un escenario activo se indica su nombre.
 
-Limitaciones heredadas: conexión Wi-Fi inicial bloqueante hasta 15 s y envío
-HTTP síncrono de ThingSpeak; durante esos bloqueos el bucle no toma muestras.
-MQ tiene umbrales de demostración y requiere calibración/estabilización física.
+**Cuidado:** no mantener BOOT presionado mientras se reinicia el ESP32; GPIO0 participa en el modo de descarga del chip.
 
-## Cómo correrlo
+## Modo de demostración con BOOT
 
-1. Instalar en Arduino IDE las librerías **ThingSpeak** (MathWorks), **DHT sensor library** (1.4.6), **Adafruit Unified Sensor**, **Adafruit SSD1306**, **Adafruit GFX Library** y **Adafruit BusIO**. ThingSpeak verificado con 2.1.1.
-2. Abrir `sketch/sketch.ino`.
-3. Copiar `sketch/secrets.example.h` como `sketch/secrets.h` y llenar el Wi-Fi (2.4 GHz), el Channel ID y la Write API Key. `secrets.h` está en `.gitignore` y no se sube.
-4. Placa **DOIT ESP32 DEVKIT V1**, subir el programa y abrir el monitor serie a **115200** con **New Line**.
+| Acción | Resultado |
+|---|---|
+| Una pulsación corta | Página siguiente; dentro del menú, escenario siguiente |
+| Doble pulsación | Abre/cierra el menú DEMO |
+| Pulsación larga (aprox. 1.6 s) en menú | Ejecuta el escenario seleccionado |
+| Pulsación larga en ejecución | Cancela la demostración |
 
-## Pines
+Escenarios: **GAS**, **TEMPERATURA**, **HUMEDAD**, **MOVIMIENTO**. Se inyectan valores de prueba desde `ResQConfig.h` al mismo motor de evaluación de sensores reales:
+- GAS: 3000 ADC.
+- TEMPERATURA: 52.0 °C.
+- HUMEDAD: 97 %.
+- MOVIMIENTO: activo.
 
-| Componente | Pin ESP32 |
-| --- | --- |
-| OLED SDA / SCL (0x3C) | 21 / 19 |
-| LED rojo / verde | 22 / 23 |
-| MQ-2 AO / DHT22 / PIR | 34 / 4 / 33 |
-| Buzzer | 27 |
+La demostración permanece como mínimo 25 s una vez publicado correctamente o hasta un máximo de 90 s si no se puede publicar; puede cancelarse manualmente. No se necesita liberar gas, aumentar calor real ni humedecer el DHT22.
 
-## Evidencias
+**Política académica acordada:** los escenarios se publican por los **mismos fields** y umbrales que las mediciones normales, sin un campo extra que los separe en ThingSpeak. **Son datos sintéticos:** la etiqueta DEMO se conserva localmente en OLED y el procedimiento se documenta aquí para que las evidencias de evaluación sean transparentes. Durante una demo, la alerta real de gas no se oculta.
 
-Las evidencias de cada sesión están en [`evidencias/`](evidencias/).
+## ThingSpeak
+
+| Field | Contenido |
+|---|---|
+| Field 1 | Gas MQ-2 ADC (no ppm) |
+| Field 2 | Temperatura °C |
+| Field 3 | Wi-Fi RSSI dBm |
+| Field 4 | Alerta general del sistema: gas, temperatura, humedad o movimiento (0/1) |
+| Field 5 | Movimiento (0/1), incluida una detección retenida hasta publicar |
+| Field 6 | Humedad relativa % |
+
+Un intento de escritura cada 20 segundos (respetando el intervalo mínimo del canal). El PIR conserva el evento pendiente hasta un envío exitoso para que un pulso corto no desaparezca antes del registro. Si el DHT real no produce temperatura/humedad válidas, se omite la muestra completa, porque ThingSpeak recibe un conjunto coherente.
+
+La conexión Wi-Fi se inicia y reintenta **sin esperar en el bucle local**. La petición HTTP de la biblioteca ThingSpeak **continúa siendo síncrona** y podría introducir una pausa temporal: es una limitación por validar en hardware.
+
+Para probar escenarios sin pulsar BOOT, el Monitor Serie (115200, fin de línea New Line) acepta los comandos `DEMO=GAS`, `DEMO=TEMP`, `DEMO=HUM`, `DEMO=MOV` y `DEMO=OFF`. Las demostraciones también funcionan mediante el botón físico.
+
+La integración con el **frontend** no está en este repositorio: será la fase posterior, después de probar y fusionar este firmware y de verificar ThingSpeak. El frontend necesitará un flujo de ingestión compatible (por ejemplo gateway/MQTT) para reflejar la misma telemetría.
+
+## Cómo compilar y probar
+
+1. Descargar ZIP de **esta rama**, no `main`, y extraer la carpeta completa.
+2. Abrir `sketch/sketch.ino` en Arduino IDE, manteniendo los archivos `.h` y `.cpp` contiguos.
+3. Instalar bibliotecas: **ThingSpeak** de MathWorks, **DHT sensor library**, **Adafruit Unified Sensor**, **Adafruit SSD1306**, **Adafruit GFX** y **Adafruit BusIO**. La placa es **DOIT ESP32 DEVKIT V1**, Monitor Serie a **115200**.
+4. Copiar `sketch/secrets.example.h` a `sketch/secrets.h` y completar SSID Wi-Fi 2.4 GHz, contraseña, Channel ID y Write API Key. Nunca subir `secrets.h` a GitHub.
+5. Verificar el cableado y el divisor MQ-2 **con USB desconectado** antes de alimentar.
+6. Compilar, subir y comprobar OLED/LED/buzzer/sensores. Esperar estabilización.
+7. Verificar navegación BOOT, las cuatro demos y los mensajes `[TS]` con código **200**. Revisar los seis campos del canal y anotar la hora/escenario de cada prueba.
+8. Probar desconexión Wi-Fi y restauración; confirmar que LED y buzzer siguen respondiendo localmente.
+
+### Comprobaciones antes del merge
+
+- [ ] Compila en Arduino IDE sin errores.
+- [ ] OLED muestra las tres páginas y recupera la última tras alerta.
+- [ ] LED amarillo y tres pitidos con PIR real; verde permanece según estado ambiental.
+- [ ] Gas (solo DEMO): LED rojo fijo y dos pitidos.
+- [ ] Temperatura y humedad (solo DEMO): LED rojo intermitente, sin pitidos si no existe movimiento.
+- [ ] Doble BOOT abre el menú, largo ejecuta demo; ninguna pulsación reinicia accidentalmente la placa.
+- [ ] Se publican seis fields de ThingSpeak y se ve código HTTP 200.
+- [ ] Los eventos cortos PIR aparecen en Field 5.
+- [ ] Recuperación después de pérdida Wi-Fi sin perder alarmas locales.
+- [ ] No se publica `secrets.h`, ni datos privados.
+
+## Archivos relevantes
+
+- `ResQConfig.h`: parámetros y umbrales editables.
+- `DemoController.h`: escenarios y ciclo de prueba.
+- `PushButton.h`: navegación con pulsaciones corta, doble y larga.
+- `AlarmBuzzer.h`: patrones no bloqueantes.
+- `OledStatusDisplay.h`: render y títulos de cada página.
+- `ResQMonitorDevice.h/.cpp`: integración de sensores, estado, salidas y nube.
+- `ThingSpeakPublisher.h`: mapeo de los seis fields.

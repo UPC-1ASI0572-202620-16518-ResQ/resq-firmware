@@ -30,7 +30,7 @@ public:
     static constexpr int LINE_HEIGHT_PIXELS = 8;
     static constexpr uint8_t TITLE_TEXT_SIZE = 2;
     static constexpr uint8_t BODY_TEXT_SIZE = 1;
-    static constexpr int TITLE_Y_PIXELS = 5;          ///< same position as the team's code
+    static constexpr int TITLE_Y_PIXELS = 11;          ///< same position as the team's code
     static constexpr int SEPARATOR_Y_PIXELS = 28;
     static constexpr int BODY_FIRST_LINE_Y_PIXELS = 31;
     static constexpr int BODY_LINE_COUNT = 4;
@@ -66,6 +66,9 @@ public:
         return isReady;
     }
 
+    /** @brief Changes the visible heading without affecting stored sensor data. */
+    void setTitle(const char* newTitle) { title = newTitle; }
+
     /** @brief Empties every body line. */
     void clearLines() {
         for (int lineIndex = 0; lineIndex < BODY_LINE_COUNT; lineIndex++) {
@@ -94,8 +97,9 @@ public:
         if (!isReady) return;
         screen.clearDisplay();
 
-        screen.setTextSize(TITLE_TEXT_SIZE);
-        int titleWidthPixels = strlen(title) * CHAR_WIDTH_PIXELS * TITLE_TEXT_SIZE;
+        const int chosenSize = strlen(title)*CHAR_WIDTH_PIXELS*TITLE_TEXT_SIZE > SCREEN_WIDTH_PIXELS ? 1 : TITLE_TEXT_SIZE;
+        screen.setTextSize(chosenSize);
+        int titleWidthPixels = strlen(title) * CHAR_WIDTH_PIXELS * chosenSize;
         screen.setCursor((SCREEN_WIDTH_PIXELS - titleWidthPixels) / 2, TITLE_Y_PIXELS);
         screen.print(title);
 

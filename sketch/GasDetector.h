@@ -34,6 +34,8 @@ public:
     /** @brief Configures the pin. Call it once from setup(). */
     void begin() {
         pinMode(analogPin, INPUT);
+        analogReadResolution(12);
+        analogSetPinAttenuation(analogPin, ADC_11db);
     }
 
     /**
