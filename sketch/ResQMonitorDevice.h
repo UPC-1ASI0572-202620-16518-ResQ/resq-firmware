@@ -73,7 +73,7 @@ private:
     bool oledOk=false, hadAlert=false;
     bool gasLatch=false, tempLatch=false, humidityLatch=false;
     int lastPublishResult=0;
-    unsigned long bootMs=0, lastReadingMs=0, lastOutputMs=0, lastPublishMs=0, lastCloudOkMs=0;
+    unsigned long bootMs=0, lastReadingMs=0, lastOutputMs=0, lastUiMs=0, lastPublishMs=0, lastCloudOkMs=0;
     enum class Page { HOME, NETWORK, DIAGNOSTICS };
     Page page=Page::HOME;
 
