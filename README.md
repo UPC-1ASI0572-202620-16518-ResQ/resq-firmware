@@ -1,8 +1,8 @@
-# ResQ 2.0 — firmware ESP32 (rama de pruebas)
+# ResQ 2.0 — firmware ESP32
 
 Firmware del prototipo físico ResQ: monitoreo ambiental, detección de movimiento, alertas locales, OLED interactiva y publicación a ThingSpeak.
 
-> **Estado:** implementación en rama de prueba. Aún no se ha verificado mediante compilación de Arduino ni con el montaje físico completo. No fusionar con `main` hasta completar la lista de validación.
+ > **Estado:** versión integrada para pruebas académicas; validar en hardware después de cualquier cambio de firmware.
 >
 > **Seguridad:** prototipo académico. No reemplaza un detector certificado de gas, incendios o intrusión. Las lecturas MQ-2 en ADC **no son ppm**, y los umbrales requieren calibración.
 
@@ -32,12 +32,12 @@ Los estados ambientales y el movimiento se controlan **independientemente**:
 |---|---|---|---|---|
 | Ambiente normal | Fijo | Apagado | Según movimiento | Silencio si no hay movimiento |
 | Gas peligro | Apagado | Fijo | Según movimiento | Dos pitidos cortos por ciclo |
-| Gas precaución | Apagado | Intermitente | Según movimiento | Silencio |
-| Temperatura/humedad alta | Apagado | Intermitente | Según movimiento | Silencio |
+| Gas precaución | Apagado | Fijo | Según movimiento | Dos pitidos cortos por ciclo |
+| Temperatura/humedad alta | Apagado | Fijo | Según movimiento | Dos pitidos cortos por ciclo |
 | Movimiento PIR | Según ambiente | Según ambiente | Intermitente | Tres pitidos cortos por ciclo |
 | Error DHT / calentamiento MQ-2 | Apagado | Intermitente | Según movimiento | Silencio, salvo movimiento |
 
-**Prioridad sonora:** gas > movimiento > silencio. Temperatura y humedad solo provocan alerta visual. Umbrales e intervalos se definen en `sketch/ResQConfig.h`; no están distribuidos como valores mágicos en el controlador.
+**Prioridad sonora:** cualquier alerta ambiental (gas, temperatura o humedad) > movimiento > silencio. Todos los eventos ambientales usan dos pitidos por ciclo; movimiento usa tres. Un calentamiento normal o una falla DHT muestran aviso visual, sin considerarse por sí solos una alerta ambiental. Umbrales e intervalos se definen en `sketch/ResQConfig.h`; no están distribuidos como valores mágicos en el controlador.
 
 El PIR real se estabiliza durante 60 segundos. El MQ-2 tiene una espera inicial demostrativa de 120 segundos, insuficiente como validación de estabilidad/calibración comercial. Las mediciones del DHT22 se realizan cada 2 segundos. Los patrones de LED y buzzer no usan `delay()`.
 
@@ -107,7 +107,7 @@ La integración con el **frontend** no está en este repositorio: será la fase 
 - [ ] OLED muestra las tres páginas y recupera la última tras alerta.
 - [ ] LED amarillo y tres pitidos con PIR real; verde permanece según estado ambiental.
 - [ ] Gas (solo DEMO): LED rojo fijo y dos pitidos.
-- [ ] Temperatura y humedad (solo DEMO): LED rojo intermitente, sin pitidos si no existe movimiento.
+- [ ] Temperatura y humedad (solo DEMO): LED rojo fijo y dos pitidos (igual que gas).
 - [ ] Doble BOOT abre el menú, largo ejecuta demo; ninguna pulsación reinicia accidentalmente la placa.
 - [ ] Se publican seis fields de ThingSpeak y se ve código HTTP 200.
 - [ ] Los eventos cortos PIR aparecen en Field 5.
