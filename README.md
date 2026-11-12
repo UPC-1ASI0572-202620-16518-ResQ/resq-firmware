@@ -78,13 +78,15 @@ La demostración permanece como mínimo 25 s una vez publicado correctamente o h
 | Field 1 | Gas MQ-2 ADC (no ppm) |
 | Field 2 | Temperatura °C |
 | Field 3 | Wi-Fi RSSI dBm |
-| Field 4 | Alarma audible: gas peligro o evento movimiento (0/1) |
+| Field 4 | Alerta general del sistema: gas, temperatura, humedad o movimiento (0/1) |
 | Field 5 | Movimiento (0/1), incluida una detección retenida hasta publicar |
 | Field 6 | Humedad relativa % |
 
-Una escritura como máximo cada 20 segundos. El PIR conserva el evento pendiente hasta un envío exitoso para que un pulso corto no desaparezca antes del registro. Si el DHT real no produce temperatura/humedad válidas, se omite la muestra completa, porque ThingSpeak recibe un conjunto coherente.
+Un intento de escritura cada 20 segundos (respetando el intervalo mínimo del canal). El PIR conserva el evento pendiente hasta un envío exitoso para que un pulso corto no desaparezca antes del registro. Si el DHT real no produce temperatura/humedad válidas, se omite la muestra completa, porque ThingSpeak recibe un conjunto coherente.
 
 La conexión Wi-Fi se inicia y reintenta **sin esperar en el bucle local**. La petición HTTP de la biblioteca ThingSpeak **continúa siendo síncrona** y podría introducir una pausa temporal: es una limitación por validar en hardware.
+
+Para probar escenarios sin pulsar BOOT, el Monitor Serie (115200, fin de línea New Line) acepta los comandos `DEMO=GAS`, `DEMO=TEMP`, `DEMO=HUM`, `DEMO=MOV` y `DEMO=OFF`. Las demostraciones también funcionan mediante el botón físico.
 
 La integración con el **frontend** no está en este repositorio: será la fase posterior, después de probar y fusionar este firmware y de verificar ThingSpeak. El frontend necesitará un flujo de ingestión compatible (por ejemplo gateway/MQTT) para reflejar la misma telemetría.
 
