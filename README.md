@@ -37,7 +37,7 @@ Los estados ambientales y el movimiento se controlan **independientemente**:
 | Movimiento PIR | Según ambiente | Según ambiente | Intermitente | Tres pitidos cortos por ciclo |
 | Error DHT / calentamiento MQ-2 | Apagado | Intermitente | Según movimiento | Silencio, salvo movimiento |
 
-**Prioridad sonora:** cualquier alerta ambiental (gas, temperatura o humedad) > movimiento > silencio. Todos los eventos ambientales usan dos pitidos por ciclo; movimiento usa tres. Un calentamiento normal o una falla DHT muestran aviso visual, sin considerarse por sí solos una alerta ambiental. Umbrales e intervalos se definen en `sketch/ResQConfig.h`; no están distribuidos como valores mágicos en el controlador.
+**Prioridad sonora:** en operación normal, cualquier alerta ambiental (gas, temperatura o humedad) > movimiento > silencio. Durante DEMO de movimiento, si coincide una precaución ambiental no crítica, el buzzer alterna un ciclo ambiental completo (dos pitidos) y uno de movimiento (tres pitidos). Un peligro real de gas, temperatura o humedad conserva prioridad sonora inmediata. Todos los eventos ambientales usan dos pitidos por ciclo; movimiento usa tres. Un calentamiento normal o una falla DHT muestran aviso visual, sin considerarse por sí solos una alerta ambiental. Umbrales e intervalos se definen en `sketch/ResQConfig.h`; no están distribuidos como valores mágicos en el controlador.
 
 El PIR real se estabiliza durante 60 segundos. El MQ-2 tiene una espera inicial demostrativa de 120 segundos, insuficiente como validación de estabilidad/calibración comercial. Las mediciones del DHT22 se realizan cada 2 segundos. Los patrones de LED y buzzer no usan `delay()`.
 
@@ -67,7 +67,7 @@ Escenarios: **GAS**, **TEMPERATURA**, **HUMEDAD**, **MOVIMIENTO**. Se inyectan v
 - HUMEDAD: 97 %.
 - MOVIMIENTO: activo.
 
-La demostración permanece como mínimo 25 s una vez publicado correctamente o hasta un máximo de 90 s si no se puede publicar; puede cancelarse manualmente. No se necesita liberar gas, aumentar calor real ni humedecer el DHT22.
+La demostración permanece al menos 25 s desde su inicio y finaliza cuando además se haya confirmado una publicación, o al alcanzar 90 s; puede cancelarse manualmente. Una alerta concurrente no cancela el temporizador de DEMO. Al terminar se recuperan las mediciones reales. Los patrones son pulsados: el ciclo ambiental incluye 1 s de silencio y el de movimiento 450 ms. No se necesita liberar gas, aumentar calor real ni humedecer el DHT22.
 
 **Política académica acordada:** los escenarios se publican por los **mismos fields** y umbrales que las mediciones normales, sin un campo extra que los separe en ThingSpeak. **Son datos sintéticos:** la etiqueta DEMO se conserva localmente en OLED y el procedimiento se documenta aquí para que las evidencias de evaluación sean transparentes. Durante una demo, la alerta real de gas no se oculta.
 

@@ -66,25 +66,32 @@ void ResQMonitorDevice::begin() {
 }
 
 void ResQMonitorDevice::update() {
-    const unsigned long now=millis();
     const ConsoleCommand command=serialConsole.poll();
     if(command.type!=ConsoleCommandType::NONE) handleConsoleCommand(command);
     handleButton(bootButton.poll());
-    const bool wasDemoActive=demo.active();
-    demo.update(now);
-    if(wasDemoActive && !demo.active()) takeReadings();
-    wifiConnection.poll();
 
-    if(now-lastReadingMs>=ResQConfig::SENSOR_INTERVAL_MS) takeReadings();
-    if(now-lastOutputMs>=ResQConfig::OUTPUT_INTERVAL_MS) {
-        lastOutputMs=now;
+    // Un comando o BOOT puede iniciar la demo y tomar lecturas con millis()
+    // posterior al comienzo del loop. No restar timestamps de un instante anterior.
+    const bool wasDemoActive=demo.active();
+    demo.update(millis());
+    if(wasDemoActive && !demo.active()) {
+        Serial.println("[DEMO] Finalizado por temporizador");
+        takeReadings();
         applyOutputs();
-    }
-    if(now-lastUiMs>=ResQConfig::UI_INTERVAL_MS) {
-        lastUiMs=now;
         refreshDisplay();
     }
-    if(now-lastPublishMs>=ResQConfig::PUBLISH_INTERVAL_MS) publishToCloud();
+    wifiConnection.poll();
+
+    if(millis()-lastReadingMs>=ResQConfig::SENSOR_INTERVAL_MS) takeReadings();
+    if(millis()-lastOutputMs>=ResQConfig::OUTPUT_INTERVAL_MS) {
+        lastOutputMs=millis();
+        applyOutputs();
+    }
+    if(millis()-lastUiMs>=ResQConfig::UI_INTERVAL_MS) {
+        lastUiMs=millis();
+        refreshDisplay();
+    }
+    if(millis()-lastPublishMs>=ResQConfig::PUBLISH_INTERVAL_MS) publishToCloud();
 }
 
 void ResQMonitorDevice::handleButton(ButtonEvent event) {
@@ -147,6 +154,8 @@ void ResQMonitorDevice::handleConsoleCommand(const ConsoleCommand& c) {
         default: break;
     }
     takeReadings();
+    applyOutputs(); // La prueba por Serial debe activar la salida antes de publicar.
+    refreshDisplay();
 }
 
 void ResQMonitorDevice::takeReadings() {
@@ -235,22 +244,39 @@ void ResQMonitorDevice::applyOutputs() {
     const bool yellowBlink=(now/ResQConfig::YELLOW_BLINK_HALF_MS)%2==0;
     // Gas, temperatura y humedad comparten una misma alarma ambiental.
     // Calentamiento/error DHT tienen aviso visual, pero no alarma sonora.
-    const bool environmentalAlarm = gasDanger || tempLatch || humidityLatch ||
+    const bool realCritical = realDanger ||
+        (isfinite(realTemperature) && realTemperature>=ResQConfig::TEMP_PELIGRO_C) ||
+        (isfinite(realHumidity) && realHumidity>=ResQConfig::HUM_PELIGRO_PCT);
+    const bool environmentalAlarm = realCritical || gasDanger || tempLatch || humidityLatch ||
         (gasReady() && gasRawLevel>=ResQConfig::GAS_PRECAUCION);
-    const bool environmentalNotice = ambientCaution || ambientDanger;
+    const bool environmentalNotice = environmentalAlarm || ambientCaution || ambientDanger;
     greenLed.setOn(!environmentalNotice);
     redLed.setOn(environmentalAlarm || (environmentalNotice && redBlink));
     yellowLed.setOn(isMotionDetected && yellowBlink);
     boardLed.setOn(environmentalAlarm);
     BuzzerPattern pattern=BuzzerPattern::SILENT;
     if(!isAlarmSilenced) {
-        if(environmentalAlarm) pattern=BuzzerPattern::GAS; // 2 pitidos ambientales
+        if(realCritical) pattern=BuzzerPattern::GAS; // El peligro real siempre tiene prioridad.
+        else if(demo.active() && demo.selected()==DemoScenario::MOTION && environmentalAlarm)
+            pattern=BuzzerPattern::GAS_AND_MOTION; // Ciclos completos; no perder la demo por una precaucion.
+        else if(environmentalAlarm) pattern=BuzzerPattern::GAS; // 2 pitidos ambientales
         else if(isMotionDetected) pattern=BuzzerPattern::MOTION; // 3 pitidos PIR
     }
     alarmBuzzer.setPattern(pattern);
 }
 
 const char* ResQMonitorDevice::alertName() const {
+    if(realDanger) return "ALERTA GAS";
+    if(isfinite(realTemperature) && realTemperature>=ResQConfig::TEMP_PELIGRO_C) return "TEMP ALTA";
+    if(isfinite(realHumidity) && realHumidity>=ResQConfig::HUM_PELIGRO_PCT) return "HUMEDAD ALTA";
+    if(demo.active()) {
+        switch(demo.selected()) {
+            case DemoScenario::GAS: return "ALERTA GAS";
+            case DemoScenario::TEMPERATURE: return "TEMP ALTA";
+            case DemoScenario::HUMIDITY: return "HUMEDAD ALTA";
+            case DemoScenario::MOTION: return "MOVIMIENTO";
+        }
+    }
     if(gasDanger) return "ALERTA GAS";
     if(isMotionDetected) return "MOVIMIENTO";
     if(!isReadingValid) return "ERROR DHT";
